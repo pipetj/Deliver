@@ -1,13 +1,18 @@
-import { useEffect, useState } from 'react';
-import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet, Pressable } from 'react-native';
-import axios from 'axios';
-import { useNavigation } from '@react-navigation/native';
+import React, { useEffect, useState } from "react";
+import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet, TouchableOpacity, Modal } from "react-native";
+import axios from "axios";
 
 const ChampionsList = () => {
   const [champions, setChampions] = useState([]);
+  const [filteredChampions, setFilteredChampions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedChampion, setSelectedChampion] = useState(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedRole, setSelectedRole] = useState("");
+  const version = "15.3.1";
   const navigation = useNavigation();
-  const version = '15.3.1';
+
 
   useEffect(() => {
     const fetchChampions = async () => {
@@ -15,7 +20,9 @@ const ChampionsList = () => {
         const response = await axios.get(
             `https://ddragon.leagueoflegends.com/cdn/${version}/data/fr_FR/champion.json`
         );
-        setChampions(Object.values(response.data.data));
+        const championsData = Object.values(response.data.data);
+        setChampions(championsData);
+        setFilteredChampions(championsData);
       } catch (error) {
         console.error('Erreur lors de la récupération des champions :', error);
       } finally {
@@ -26,18 +33,46 @@ const ChampionsList = () => {
     fetchChampions();
   }, []);
 
+  useEffect(() => {
+    const filtered = champions.filter(champion =>
+        (champion.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            champion.blurb.toLowerCase().includes(searchQuery.toLowerCase())) &&
+        (selectedRole === "" || champion.tags.includes(selectedRole))
+    );
+    setFilteredChampions(filtered);
+  }, [searchQuery, selectedRole, champions]);
+
   const handleChampionClick = (champion) => {
     navigation.navigate('ChampionDetail', { champion });
   };
 
+  const roles = ["", "Assassin", "Fighter", "Mage", "Marksman", "Support", "Tank"];
 
   if (loading) return <ActivityIndicator size="large" color="#0000ff" />;
 
   return (
       <View style={styles.container}>
         <Text style={styles.title}>Liste des Champions</Text>
+        <TextInput
+            style={styles.searchBar}
+            placeholder="Rechercher un champion..."
+            placeholderTextColor="#888"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+        />
+        <View style={styles.roleContainer}>
+          {roles.map(role => (
+              <TouchableOpacity
+                  key={role}
+                  style={[styles.roleButton, selectedRole === role && styles.selectedRole]}
+                  onPress={() => setSelectedRole(role)}
+              >
+                <Text style={styles.roleText}>{role || "Tous"}</Text>
+              </TouchableOpacity>
+          ))}
+        </View>
         <FlatList
-            data={champions}
+            data={filteredChampions}
             keyExtractor={(item) => item.id}
             numColumns={3}
             renderItem={({ item }) => (
@@ -52,6 +87,37 @@ const ChampionsList = () => {
                 </Pressable>
             )}
         />
+        <Modal
+            visible={modalVisible}
+            animationType="slide"
+            transparent={true}
+            onRequestClose={() => setModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              {selectedChampion && (
+                  <>
+                    <Text style={styles.modalTitle}>{selectedChampion.name}</Text>
+                    <Text style={styles.modalText}>Role: {selectedChampion.tags.join(", ")}</Text>
+                    <Text style={styles.modalText}>Description: {selectedChampion.blurb}</Text>
+                    <Text style={styles.modalText}>Sorts:</Text>
+                    {Array.isArray(selectedChampion.spells) && selectedChampion.spells.length > 0 ? (
+                        selectedChampion.spells.map((spell, index) => (
+                            <View key={index} style={styles.spellContainer}>
+                              <Text style={styles.modalText}>- {spell.name}: {spell.description}</Text>
+                            </View>
+                        ))
+                    ) : (
+                        <Text style={styles.modalText}>Aucun sort disponible</Text>
+                    )}
+                  </>
+              )}
+              <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
+                <Text style={styles.closeButtonText}>Fermer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </View>
   );
 };
@@ -59,18 +125,18 @@ const ChampionsList = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#121212',
+    backgroundColor: "#121212",
     padding: 10,
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-    textAlign: 'center',
+    fontWeight: "bold",
+    color: "#fff",
+    textAlign: "center",
     marginBottom: 10,
   },
   championContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     margin: 10,
   },
   championImage: {
@@ -79,8 +145,43 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   championName: {
-    color: '#fff',
+    color: "#fff",
     marginTop: 5,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    padding: 20,
+    borderRadius: 10,
+    width: "80%",
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: "bold",
+    marginBottom: 10,
+  },
+  modalText: {
+    fontSize: 16,
+    marginBottom: 10,
+  },
+  spellContainer: {
+    marginBottom: 8,
+  },
+  closeButton: {
+    backgroundColor: "#1D3D47",
+    padding: 10,
+    borderRadius: 5,
+    marginTop: 20,
+  },
+  closeButtonText: {
+    color: "#fff",
+    textAlign: "center",
+    fontWeight: "bold",
   },
 });
 
