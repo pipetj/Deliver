@@ -13,7 +13,7 @@ export default function HomeScreen() {
           style={styles.reactLogo}
         />
       }>
-      <View style={styles.container}>
+      <View style={styles.stepContainer}>
         <ChampionsList />
       </View>
     </ParallaxScrollView>
