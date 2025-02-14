@@ -3,6 +3,8 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { NavigationContainer } from '@react-navigation/native';
 
 import HomeScreen from '@/screens/HomeScreen';
+import LoginScreen from '@/screens/LoginScreen';
+import RegisterScreen from "@/screens/RegisterScreen";
 import ChampionDetailScreen from '@/components/ChampionDetail';
 
 const Tab = createBottomTabNavigator();
@@ -22,6 +24,8 @@ export default function AppNavigator() {
         <NavigationContainer>
             <Tab.Navigator>
                 <Tab.Screen name="Champions" component={ChampionsStack} />
+                <Tab.Screen name="Login" component={LoginScreen} />
+                <Tab.Screen name="Register" component={RegisterScreen} />
             </Tab.Navigator>
         </NavigationContainer>
     );

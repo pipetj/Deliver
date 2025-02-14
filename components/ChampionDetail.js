@@ -1,8 +1,11 @@
-import { ScrollView, View, Text, Image, StyleSheet } from 'react-native';
+import React from "react";
+import { ScrollView, View, Text, Image, StyleSheet } from "react-native";
 
 const ChampionDetailScreen = ({ route }) => {
     const { champion } = route.params;
-    champion.spells = undefined;
+
+    // Vérifier si les sorts sont disponibles
+    const spells = champion.spells || [];
 
     return (
         <ScrollView style={styles.container}>
@@ -13,12 +16,21 @@ const ChampionDetailScreen = ({ route }) => {
                 }}
                 style={styles.championImage}
             />
-            <Text style={styles.role}>Role: {champion.tags.join(', ')}</Text>
+            <Text style={styles.role}>Role: {champion.tags.join(", ")}</Text>
             <Text style={styles.description}>Description: {champion.blurb}</Text>
 
-            <Text style={styles.spellTitle}>Sorts:</Text>
-            {Array.isArray(champion.spells) && champion.spells.length > 0 ? (
-                champion.spells.map((spell, index) => (
+            <Text style={styles.subTitle}>Statistiques de base :</Text>
+            <View style={styles.statsContainer}>
+                {Object.entries(champion.stats).map(([key, value]) => (
+                    <Text key={key} style={styles.statText}>
+                        {key}: {value}
+                    </Text>
+                ))}
+            </View>
+
+            <Text style={styles.subTitle}>Sorts :</Text>
+            {spells.length > 0 ? (
+                spells.map((spell, index) => (
                     <View key={index} style={styles.spellContainer}>
                         <Text style={styles.spellName}>- {spell.name}</Text>
                         <Text style={styles.spellDescription}>{spell.description}</Text>
@@ -35,45 +47,56 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         padding: 20,
-        backgroundColor: '#fff',
+        backgroundColor: "#fff",
     },
     title: {
         fontSize: 28,
-        fontWeight: 'bold',
+        fontWeight: "bold",
         marginBottom: 10,
+        textAlign: "center",
     },
     championImage: {
         width: 200,
         height: 200,
-        alignSelf: 'center',
+        alignSelf: "center",
         marginBottom: 20,
     },
     role: {
         fontSize: 18,
         marginBottom: 10,
+        textAlign: "center",
     },
     description: {
         fontSize: 16,
         marginBottom: 20,
+        textAlign: "center",
     },
-    spellTitle: {
+    subTitle: {
         fontSize: 20,
-        fontWeight: 'bold',
+        fontWeight: "bold",
         marginBottom: 10,
     },
+    statsContainer: {
+        marginBottom: 20,
+    },
+    statText: {
+        fontSize: 16,
+        marginBottom: 5,
+    },
     spellContainer: {
-        marginBottom: 12,
+        marginBottom: 15,
     },
     spellName: {
         fontSize: 18,
-        fontWeight: 'bold',
+        fontWeight: "bold",
     },
     spellDescription: {
         fontSize: 16,
     },
     noSpells: {
         fontSize: 16,
-        fontStyle: 'italic',
+        fontStyle: "italic",
+        textAlign: "center",
     },
 });
 

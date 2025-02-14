@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet, TouchableOpacity, Modal } from "react-native";
+import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet, TouchableOpacity, Modal, TextInput } from "react-native";
 import axios from "axios";
+import { useNavigation } from "@react-navigation/native";
 
 const ChampionsList = () => {
   const [champions, setChampions] = useState([]);
@@ -13,7 +14,6 @@ const ChampionsList = () => {
   const version = "15.3.1";
   const navigation = useNavigation();
 
-
   useEffect(() => {
     const fetchChampions = async () => {
       try {
@@ -24,7 +24,7 @@ const ChampionsList = () => {
         setChampions(championsData);
         setFilteredChampions(championsData);
       } catch (error) {
-        console.error('Erreur lors de la récupération des champions :', error);
+        console.error("Erreur lors de la récupération des champions :", error);
       } finally {
         setLoading(false);
       }
@@ -44,6 +44,10 @@ const ChampionsList = () => {
 
   const handleChampionClick = (champion) => {
     navigation.navigate('ChampionDetail', { champion });
+  };
+
+  const handleChampionNavigation = (champion) => {
+    navigation.navigate("ChampionDetail", { champion });
   };
 
   const roles = ["", "Assassin", "Fighter", "Mage", "Marksman", "Support", "Tank"];
@@ -76,7 +80,11 @@ const ChampionsList = () => {
             keyExtractor={(item) => item.id}
             numColumns={3}
             renderItem={({ item }) => (
-                <Pressable onPress={() => handleChampionClick(item)} style={styles.championContainer}>
+                <TouchableOpacity
+                    onPress={() => handleChampionClick(item)}
+                    onLongPress={() => handleChampionNavigation(item)}
+                    style={styles.championContainer}
+                >
                   <Image
                       source={{
                         uri: `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${item.id}.png`,
@@ -84,7 +92,7 @@ const ChampionsList = () => {
                       style={styles.championImage}
                   />
                   <Text style={styles.championName}>{item.name}</Text>
-                </Pressable>
+                </TouchableOpacity>
             )}
         />
         <Modal
@@ -135,6 +143,31 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 10,
   },
+  searchBar: {
+    backgroundColor: "#fff",
+    padding: 10,
+    borderRadius: 5,
+    marginBottom: 10,
+    color: "#000",
+  },
+  roleContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  roleButton: {
+    backgroundColor: "#333",
+    padding: 8,
+    borderRadius: 5,
+    margin: 5,
+  },
+  selectedRole: {
+    backgroundColor: "#1D3D47",
+  },
+  roleText: {
+    color: "#fff",
+  },
   championContainer: {
     alignItems: "center",
     margin: 10,
@@ -168,9 +201,6 @@ const styles = StyleSheet.create({
   modalText: {
     fontSize: 16,
     marginBottom: 10,
-  },
-  spellContainer: {
-    marginBottom: 8,
   },
   closeButton: {
     backgroundColor: "#1D3D47",

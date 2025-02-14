@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { View, Text, TextInput, Button, Alert } from "react-native";
-import { register } from "../api/api";
+import { register } from "../frontend/src/api/api";
 
 const RegisterScreen = ({ navigation }) => {
     const [username, setUsername] = useState("");
