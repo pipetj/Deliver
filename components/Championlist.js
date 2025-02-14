@@ -16,7 +16,7 @@ const ChampionsList = () => {
     const fetchChampions = async () => {
       try {
         const response = await axios.get(
-            `https://ddragon.leagueoflegends.com/cdn/${version}/data/fr_FR/champion.json`
+            `https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/champion.json`
         );
         const championsData = Object.values(response.data.data);
         setChampions(championsData);
@@ -45,6 +45,15 @@ const ChampionsList = () => {
     setModalVisible(true);
   };
 
+  const roleTranslations = {
+    "Assassin": "Assassin",
+    "Fighter": "Combattant",
+    "Mage": "Mage",
+    "Marksman": "Tireur",
+    "Support": "Support",
+    "Tank": "Tank",
+  };
+
   const roles = ["", "Assassin", "Fighter", "Mage", "Marksman", "Support", "Tank"];
 
   if (loading) return <ActivityIndicator size="large" color="#0000ff" />;
@@ -66,7 +75,7 @@ const ChampionsList = () => {
                   style={[styles.roleButton, selectedRole === role && styles.selectedRole]}
                   onPress={() => setSelectedRole(role)}
               >
-                <Text style={styles.roleText}>{role || "Tous"}</Text>
+                <Text style={styles.roleText}>{role ? roleTranslations[role] : "Tous"}</Text>
               </TouchableOpacity>
           ))}
         </View>
@@ -97,18 +106,10 @@ const ChampionsList = () => {
               {selectedChampion && (
                   <>
                     <Text style={styles.modalTitle}>{selectedChampion.name}</Text>
-                    <Text style={styles.modalText}>Role: {selectedChampion.tags.join(", ")}</Text>
+                    <Text style={styles.modalText}>
+                      Rôle: {selectedChampion.tags.map(tag => roleTranslations[tag] || tag).join(", ")}
+                    </Text>
                     <Text style={styles.modalText}>Description: {selectedChampion.blurb}</Text>
-                    <Text style={styles.modalText}>Sorts:</Text>
-                    {Array.isArray(selectedChampion.spells) && selectedChampion.spells.length > 0 ? (
-                        selectedChampion.spells.map((spell, index) => (
-                            <View key={index} style={styles.spellContainer}>
-                              <Text style={styles.modalText}>- {spell.name}: {spell.description}</Text>
-                            </View>
-                        ))
-                    ) : (
-                        <Text style={styles.modalText}>Aucun sort disponible</Text>
-                    )}
                   </>
               )}
               <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
