@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet, TouchableOpacity, Modal } from "react-native";
+import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet, TouchableOpacity, Modal, TextInput } from "react-native";
 import axios from "axios";
 
 const ChampionsList = () => {
   const [champions, setChampions] = useState([]);
+  const [filteredChampions, setFilteredChampions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedChampion, setSelectedChampion] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedRole, setSelectedRole] = useState("");
   const version = "15.3.1";
 
   useEffect(() => {
@@ -15,7 +18,9 @@ const ChampionsList = () => {
         const response = await axios.get(
             `https://ddragon.leagueoflegends.com/cdn/${version}/data/fr_FR/champion.json`
         );
-        setChampions(Object.values(response.data.data));
+        const championsData = Object.values(response.data.data);
+        setChampions(championsData);
+        setFilteredChampions(championsData);
       } catch (error) {
         console.error("Erreur lors de la récupération des champions :", error);
       } finally {
@@ -26,18 +31,47 @@ const ChampionsList = () => {
     fetchChampions();
   }, []);
 
+  useEffect(() => {
+    const filtered = champions.filter(champion =>
+        (champion.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            champion.blurb.toLowerCase().includes(searchQuery.toLowerCase())) &&
+        (selectedRole === "" || champion.tags.includes(selectedRole))
+    );
+    setFilteredChampions(filtered);
+  }, [searchQuery, selectedRole, champions]);
+
   const handleChampionClick = (champion) => {
     setSelectedChampion(champion);
     setModalVisible(true);
   };
+
+  const roles = ["", "Assassin", "Fighter", "Mage", "Marksman", "Support", "Tank"];
 
   if (loading) return <ActivityIndicator size="large" color="#0000ff" />;
 
   return (
       <View style={styles.container}>
         <Text style={styles.title}>Liste des Champions</Text>
+        <TextInput
+            style={styles.searchBar}
+            placeholder="Rechercher un champion..."
+            placeholderTextColor="#888"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+        />
+        <View style={styles.roleContainer}>
+          {roles.map(role => (
+              <TouchableOpacity
+                  key={role}
+                  style={[styles.roleButton, selectedRole === role && styles.selectedRole]}
+                  onPress={() => setSelectedRole(role)}
+              >
+                <Text style={styles.roleText}>{role || "Tous"}</Text>
+              </TouchableOpacity>
+          ))}
+        </View>
         <FlatList
-            data={champions}
+            data={filteredChampions}
             keyExtractor={(item) => item.id}
             numColumns={3}
             renderItem={({ item }) => (
@@ -52,8 +86,6 @@ const ChampionsList = () => {
                 </TouchableOpacity>
             )}
         />
-
-        {/* Modal pour afficher les informations détaillées du champion */}
         <Modal
             visible={modalVisible}
             animationType="slide"
@@ -67,9 +99,7 @@ const ChampionsList = () => {
                     <Text style={styles.modalTitle}>{selectedChampion.name}</Text>
                     <Text style={styles.modalText}>Role: {selectedChampion.tags.join(", ")}</Text>
                     <Text style={styles.modalText}>Description: {selectedChampion.blurb}</Text>
-
                     <Text style={styles.modalText}>Sorts:</Text>
-                    {/* Vérification de spells */}
                     {Array.isArray(selectedChampion.spells) && selectedChampion.spells.length > 0 ? (
                         selectedChampion.spells.map((spell, index) => (
                             <View key={index} style={styles.spellContainer}>
@@ -104,6 +134,31 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 10,
   },
+  searchBar: {
+    backgroundColor: "#fff",
+    padding: 10,
+    borderRadius: 5,
+    marginBottom: 10,
+    color: "#000",
+  },
+  roleContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  roleButton: {
+    backgroundColor: "#333",
+    padding: 8,
+    borderRadius: 5,
+    margin: 5,
+  },
+  selectedRole: {
+    backgroundColor: "#1D3D47",
+  },
+  roleText: {
+    color: "#fff",
+  },
   championContainer: {
     alignItems: "center",
     margin: 10,
@@ -137,9 +192,6 @@ const styles = StyleSheet.create({
   modalText: {
     fontSize: 16,
     marginBottom: 10,
-  },
-  spellContainer: {
-    marginBottom: 8,
   },
   closeButton: {
     backgroundColor: "#1D3D47",
