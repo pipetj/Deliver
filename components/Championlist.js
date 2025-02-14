@@ -21,8 +21,19 @@ const ChampionsList = () => {
             `https://ddragon.leagueoflegends.com/cdn/${version}/data/fr_FR/champion.json`
         );
         const championsData = Object.values(response.data.data);
-        setChampions(championsData);
-        setFilteredChampions(championsData);
+
+        // Récupérer les détails complets de chaque champion
+        const championsWithDetails = await Promise.all(
+            championsData.map(async (champion) => {
+              const championDetailResponse = await axios.get(
+                  `https://ddragon.leagueoflegends.com/cdn/${version}/data/fr_FR/champion/${champion.id}.json`
+              );
+              return championDetailResponse.data.data[champion.id];
+            })
+        );
+
+        setChampions(championsWithDetails);
+        setFilteredChampions(championsWithDetails);
       } catch (error) {
         console.error("Erreur lors de la récupération des champions :", error);
       } finally {
