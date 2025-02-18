@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet, TouchableOpacity, Modal, TextInput } from "react-native";
 import axios from "axios";
+import { useNavigation } from "@react-navigation/native";
 
 const ChampionsList = () => {
   const [champions, setChampions] = useState([]);
@@ -11,6 +12,7 @@ const ChampionsList = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRole, setSelectedRole] = useState("");
   const version = "15.3.1";
+  const navigation = useNavigation();
 
   useEffect(() => {
     const fetchChampions = async () => {
@@ -19,8 +21,19 @@ const ChampionsList = () => {
             `https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/champion.json`
         );
         const championsData = Object.values(response.data.data);
-        setChampions(championsData);
-        setFilteredChampions(championsData);
+
+        // Récupérer les détails complets de chaque champion
+        const championsWithDetails = await Promise.all(
+            championsData.map(async (champion) => {
+              const championDetailResponse = await axios.get(
+                  `https://ddragon.leagueoflegends.com/cdn/${version}/data/fr_FR/champion/${champion.id}.json`
+              );
+              return championDetailResponse.data.data[champion.id];
+            })
+        );
+
+        setChampions(championsWithDetails);
+        setFilteredChampions(championsWithDetails);
       } catch (error) {
         console.error("Erreur lors de la récupération des champions :", error);
       } finally {
@@ -41,8 +54,11 @@ const ChampionsList = () => {
   }, [searchQuery, selectedRole, champions]);
 
   const handleChampionClick = (champion) => {
-    setSelectedChampion(champion);
-    setModalVisible(true);
+    navigation.navigate('ChampionDetail', { champion });
+  };
+
+  const handleChampionNavigation = (champion) => {
+    navigation.navigate("ChampionDetail", { champion });
   };
 
   const roleTranslations = {
@@ -84,7 +100,11 @@ const ChampionsList = () => {
             keyExtractor={(item) => item.id}
             numColumns={3}
             renderItem={({ item }) => (
-                <TouchableOpacity onPress={() => handleChampionClick(item)} style={styles.championContainer}>
+                <TouchableOpacity
+                    onPress={() => handleChampionClick(item)}
+                    onLongPress={() => handleChampionNavigation(item)}
+                    style={styles.championContainer}
+                >
                   <Image
                       source={{
                         uri: `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${item.id}.png`,
