@@ -6,6 +6,7 @@ import HomeScreen from '@/screens/HomeScreen';
 import LoginScreen from '@/screens/LoginScreen';
 import RegisterScreen from "@/screens/RegisterScreen";
 import ChampionDetailScreen from '@/components/ChampionDetail';
+import ItemSelectionScreen from '@/screens/ItemSelectionScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -15,6 +16,7 @@ function ChampionsStack() {
         <Stack.Navigator>
             <Stack.Screen name="HomeScreen" component={HomeScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ChampionDetail" component={ChampionDetailScreen} />
+            <Stack.Screen name="ItemSelectionScreen" component={ItemSelectionScreen} options={{ title: "Sélection des Items" }} />
         </Stack.Navigator>
     );
 }

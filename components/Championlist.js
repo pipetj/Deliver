@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet, TouchableOpacity, Modal, TextInput } from "react-native";
+import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet, Pressable, Modal, TextInput } from "react-native";
 import axios from "axios";
 import { useNavigation } from "@react-navigation/native";
 
@@ -11,10 +11,27 @@ const ChampionsList = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRole, setSelectedRole] = useState("");
-  const version = "15.3.1";
+  const [version, setVersion] = useState(""); // Pour stocker la version dynamique
   const navigation = useNavigation();
 
   useEffect(() => {
+    // Fonction pour récupérer la version la plus récente
+    const fetchLatestVersion = async () => {
+      try {
+        const response = await axios.get("https://ddragon.leagueoflegends.com/api/versions.json");
+        const latestVersion = response.data[0]; // La version la plus récente est toujours en premier
+        setVersion(latestVersion);
+      } catch (error) {
+        console.error("Erreur lors de la récupération de la version :", error);
+      }
+    };
+
+    fetchLatestVersion();
+  }, []);
+
+  useEffect(() => {
+    if (!version) return; // Attendre que la version soit récupérée
+
     const fetchChampions = async () => {
       try {
         const response = await axios.get(
@@ -42,7 +59,7 @@ const ChampionsList = () => {
     };
 
     fetchChampions();
-  }, []);
+  }, [version]); // Recharger les champions lorsque la version change
 
   useEffect(() => {
     const filtered = champions.filter(champion =>
@@ -77,13 +94,13 @@ const ChampionsList = () => {
         />
         <View style={styles.roleContainer}>
           {roles.map(role => (
-              <TouchableOpacity
+              <Pressable
                   key={role}
                   style={[styles.roleButton, selectedRole === role && styles.selectedRole]}
                   onPress={() => setSelectedRole(role)}
               >
                 <Text style={styles.roleText}>{role || "Tous"}</Text>
-              </TouchableOpacity>
+              </Pressable>
           ))}
         </View>
         <FlatList
@@ -91,7 +108,7 @@ const ChampionsList = () => {
             keyExtractor={(item) => item.id}
             numColumns={3}
             renderItem={({ item }) => (
-                <TouchableOpacity
+                <Pressable
                     onPress={() => handleChampionClick(item)}
                     onLongPress={() => handleChampionNavigation(item)}
                     style={styles.championContainer}
@@ -103,7 +120,7 @@ const ChampionsList = () => {
                       style={styles.championImage}
                   />
                   <Text style={styles.championName}>{item.name}</Text>
-                </TouchableOpacity>
+                </Pressable>
             )}
         />
         <Modal
@@ -131,9 +148,9 @@ const ChampionsList = () => {
                     )}
                   </>
               )}
-              <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
+              <Pressable onPress={() => setModalVisible(false)} style={styles.closeButton}>
                 <Text style={styles.closeButtonText}>Fermer</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
           </View>
         </Modal>
