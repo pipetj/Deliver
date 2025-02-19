@@ -1,10 +1,21 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Image, ScrollView, StyleSheet, ActivityIndicator, TextInput, TouchableOpacity } from "react-native";
+import {
+  View,
+  Text,
+  Image,
+  ScrollView,
+  StyleSheet,
+  ActivityIndicator,
+  TextInput,
+  TouchableOpacity,
+  Animated,
+} from "react-native";
 
-const RARITY_ORDER = {
-  "COMMON": 1,
-  "EPIC": 2,
-  "LEGENDARY": 3
+const RARITY_MAPPING = {
+  LEGENDARY: 4, // Items légendaires avec les meilleurs stats et effets
+  EPIC: 3, // Items avec stats additionnelles et/ou effets
+  BASIC: 2, // Items avec une seule stat ou effet
+  STARTER: 1, // Items de départ
 };
 
 const ItemSelectionScreen = () => {
@@ -16,62 +27,111 @@ const ItemSelectionScreen = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedClass, setSelectedClass] = useState("all");
   const [classes, setClasses] = useState([]);
+  const [selectedItem, setSelectedItem] = useState(null); // Item sélectionné pour la vue détaillée
+  const [addedItems, setAddedItems] = useState([]); // Liste des items ajoutés
+  const spinValue = new Animated.Value(0); // Animation de rotation
 
-  // Fonction pour déterminer la rareté d'un item basée sur son prix
+  // Fonction pour animer la rotation
+  const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+
+  const startSpinAnimation = () => {
+    Animated.loop(
+        Animated.timing(spinValue, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: true,
+        })
+    ).start();
+  };
+
   const getItemRarity = (item) => {
-    const price = item.gold.total;
-    if (price >= 3000) return "LEGENDARY";
-    if (price >= 2000) return "EPIC";
-    return "COMMON";
+    // Items de départ (Starter)
+    if (
+        item.tags?.includes("Starter") ||
+        item.description.toLowerCase().includes("starting item") ||
+        (item.gold.total <= 500 && !item.from)
+    ) {
+      return "STARTER";
+    }
+
+    // Items légendaires
+    if (
+        !item.into &&
+        item.from &&
+        (item.description.includes("<passive>") ||
+            item.description.includes("<active>")) &&
+        item.gold.total >= 2500
+    ) {
+      return "LEGENDARY";
+    }
+
+    // Items épiques
+    if (
+        item.from &&
+        (item.description.includes("<passive>") ||
+            item.description.includes("<active>") ||
+            item.description.match(/<stats>.*<\/stats>/s)?.[0]?.match(/\+/g)?.length >
+            1)
+    ) {
+      return "EPIC";
+    }
+
+    // Items basiques par défaut
+    return "BASIC";
   };
 
   useEffect(() => {
     const fetchItems = async () => {
       try {
-        const versionsResponse = await fetch('https://ddragon.leagueoflegends.com/api/versions.json');
+        const versionsResponse = await fetch(
+            "https://ddragon.leagueoflegends.com/api/versions.json"
+        );
         const versions = await versionsResponse.json();
         const latestVersion = versions[0];
         setCurrentVersion(latestVersion);
 
-        const itemsResponse = await fetch(`https://ddragon.leagueoflegends.com/cdn/${latestVersion}/data/fr_FR/item.json`);
+        const itemsResponse = await fetch(
+            `https://ddragon.leagueoflegends.com/cdn/${latestVersion}/data/fr_FR/item.json`
+        );
         const itemsData = await itemsResponse.json();
 
         const uniqueItems = new Map();
         const uniqueClasses = new Set(["all"]);
 
-        // Premier filtrage des items
         Object.entries(itemsData.data).forEach(([id, item]) => {
           const availableOnSR = item.maps && item.maps["11"] === true;
           const isPurchasable = item.gold && item.gold.purchasable === true;
-          const isNotSpecialItem = !item.tags?.includes("Trinket") && 
-                                 !item.requiredChampion && 
-                                 !item.requiredAlly;
-          const hasValidData = item.description && 
-                             item.image && 
-                             item.image.full && 
-                             item.name;
+          const isNotSpecialItem =
+              !item.tags?.includes("Trinket") &&
+              !item.requiredChampion &&
+              !item.requiredAlly;
+          const hasValidData =
+              item.description && item.image && item.image.full && item.name;
 
           if (availableOnSR && isPurchasable && isNotSpecialItem && hasValidData) {
-            const normalizedName = item.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            
+            const normalizedName = item.name
+                .toLowerCase()
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "");
+
             if (!uniqueItems.has(normalizedName) || uniqueItems.get(normalizedName).id < id) {
-              // Ajouter la rareté à l'item
               const itemWithRarity = {
                 ...item,
                 id,
-                rarity: getItemRarity(item)
+                rarity: getItemRarity(item),
               };
               uniqueItems.set(normalizedName, itemWithRarity);
-              
-              // Collecter les classes uniques
-              item.tags?.forEach(tag => uniqueClasses.add(tag));
+
+              item.tags?.forEach((tag) => uniqueClasses.add(tag));
             }
           }
         });
 
-        // Trier les items par rareté puis par prix
         const sortedItems = Array.from(uniqueItems.values()).sort((a, b) => {
-          const rarityDiff = RARITY_ORDER[b.rarity] - RARITY_ORDER[a.rarity];
+          const rarityDiff = RARITY_MAPPING[b.rarity] - RARITY_MAPPING[a.rarity];
           return rarityDiff !== 0 ? rarityDiff : b.gold.total - a.gold.total;
         });
 
@@ -89,109 +149,269 @@ const ItemSelectionScreen = () => {
     fetchItems();
   }, []);
 
-  // Fonction pour filtrer les items
   useEffect(() => {
     let result = [...items];
-    
-    // Filtrer par classe
+
     if (selectedClass !== "all") {
-      result = result.filter(item => item.tags?.includes(selectedClass));
+      result = result.filter((item) => item.tags?.includes(selectedClass));
     }
-    
-    // Filtrer par recherche
+
     if (searchQuery) {
-      const query = searchQuery.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      result = result.filter(item => 
-        item.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(query)
+      const query = searchQuery
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+      result = result.filter((item) =>
+          item.name
+              .toLowerCase()
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .includes(query)
       );
     }
-    
+
     setFilteredItems(result);
   }, [searchQuery, selectedClass, items]);
 
+  const getRarityColor = (rarity) => {
+    switch (rarity) {
+      case "LEGENDARY":
+        return "#ffd700"; // Or
+      case "EPIC":
+        return "#c931db"; // Violet
+      case "BASIC":
+        return "#87ceeb"; // Bleu clair
+      case "STARTER":
+        return "#90EE90"; // Vert clair
+      default:
+        return "#ffffff";
+    }
+  };
+
+
+  const stripHtmlTags = (html: string) => {
+    return html
+        .replace(/<\/?[^>]+(>|$)/g, "") // Supprime toutes les balises HTML
+        .replace(/(\r\n|\n|\r)/gm, "\n") // Conserve les retours à la ligne
+        .trim();
+  };
+
+  const handleItemPress = (item) => {
+    setSelectedItem(item);
+  };
+
+  const handleAddItem = (itemId) => {
+    if (!addedItems.includes(itemId)) {
+      const item = items.find((i) => i.id === itemId);
+      if (item.rarity === "LEGENDARY" && addedItems.filter((id) => items.find((i) => i.id === id).rarity === "LEGENDARY").length >= 6) {
+        alert("Vous ne pouvez pas ajouter plus de 6 items légendaires.");
+        return;
+      }
+      setAddedItems([...addedItems, itemId]);
+      startSpinAnimation();
+    }
+  };
+
+  const handleRemoveItem = (itemId) => {
+    setAddedItems(addedItems.filter((id) => id !== itemId));
+  };
+
+  const renderItemDetails = () => {
+    if (!selectedItem) return null;
+
+    return (
+        <View style={styles.detailsContainer}>
+          <Image
+              source={{
+                uri: `https://ddragon.leagueoflegends.com/cdn/${currentVersion}/img/item/${selectedItem.image.full}`,
+              }}
+              style={styles.detailsImage}
+          />
+          <Text style={styles.detailsTitle}>{selectedItem.name}</Text>
+          <Text style={styles.detailsPrice}>{selectedItem.gold.total}g</Text>
+          <Text style={styles.detailsDescription}>
+            {stripHtmlTags(selectedItem.description)}
+          </Text>
+          <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => handleAddItem(selectedItem.id)}
+          >
+            <Text style={styles.addButtonText}>Ajouter</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setSelectedItem(null)}
+          >
+            <Text style={styles.closeButtonText}>Fermer</Text>
+          </TouchableOpacity>
+        </View>
+    );
+  };
+
+  const renderBuildPanel = () => {
+    return (
+        <View style={styles.buildPanel}>
+          <Text style={styles.buildPanelTitle}>Votre Build</Text>
+          <View style={styles.buildItemsContainer}>
+            {addedItems.map((itemId) => {
+              const item = items.find((i) => i.id === itemId);
+              return (
+                  <TouchableOpacity
+                      key={itemId}
+                      onPress={() => handleRemoveItem(itemId)}
+                  >
+                    <Image
+                        source={{
+                          uri: `https://ddragon.leagueoflegends.com/cdn/${currentVersion}/img/item/${item.image.full}`,
+                        }}
+                        style={styles.buildItemImage}
+                    />
+                  </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+    );
+  };
+
   if (loading) {
     return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#ffcc00" />
-        <Text style={styles.loadingText}>Chargement des items...</Text>
-      </View>
+        <View style={styles.container}>
+          <ActivityIndicator size="large" color="#ffcc00" />
+          <Text style={styles.loadingText}>Chargement des items...</Text>
+        </View>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>{error}</Text>
-      </View>
+        <View style={styles.container}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
     );
   }
 
-  const getRarityColor = (rarity) => {
-    switch (rarity) {
-      case "LEGENDARY": return "#ff8c00";
-      case "EPIC": return "#c931db";
-      case "COMMON": return "#ffffff";
-      default: return "#ffffff";
-    }
-  };
-
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.title}>Sélectionnez vos items ({filteredItems.length})</Text>
-      
-      {/* Barre de recherche */}
-      <TextInput
-        style={styles.searchBar}
-        placeholder="Rechercher un item..."
-        placeholderTextColor="#999"
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-      />
+      <View style={styles.container}>
+        {renderBuildPanel()}
+        <ScrollView style={styles.itemsScrollView}>
+          <Text style={styles.title}>Sélectionnez vos items ({filteredItems.length})</Text>
 
-      {/* Filtres de classe */}
-      <ScrollView horizontal style={styles.classFiltersContainer} showsHorizontalScrollIndicator={false}>
-        {classes.map((classTag) => (
-          <TouchableOpacity
-            key={classTag}
-            style={[
-              styles.classFilter,
-              selectedClass === classTag && styles.classFilterSelected
-            ]}
-            onPress={() => setSelectedClass(classTag)}
+          <TextInput
+              style={styles.searchBar}
+              placeholder="Rechercher un item..."
+              placeholderTextColor="#999"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+          />
+
+          <ScrollView
+              horizontal
+              style={styles.classFiltersContainer}
+              showsHorizontalScrollIndicator={false}
           >
-            <Text style={[
-              styles.classFilterText,
-              selectedClass === classTag && styles.classFilterTextSelected
-            ]}>
-              {classTag === "all" ? "Tous" : classTag}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+            {classes.map((classTag) => (
+                <TouchableOpacity
+                    key={classTag}
+                    style={[
+                      styles.classFilter,
+                      selectedClass === classTag && styles.classFilterSelected,
+                    ]}
+                    onPress={() => setSelectedClass(classTag)}
+                >
+                  <Text
+                      style={[
+                        styles.classFilterText,
+                        selectedClass === classTag && styles.classFilterTextSelected,
+                      ]}
+                  >
+                    {classTag === "all" ? "Tous" : classTag}
+                  </Text>
+                </TouchableOpacity>
+            ))}
+          </ScrollView>
 
-      <View style={styles.itemsContainer}>
-        {filteredItems.map((item) => (
-          <View key={item.id} style={[styles.itemContainer, { borderColor: getRarityColor(item.rarity) }]}>
-            <Image
-              source={{
-                uri: `https://ddragon.leagueoflegends.com/cdn/${currentVersion}/img/item/${item.image.full}`
-              }}
-              style={[styles.itemImage, { borderColor: getRarityColor(item.rarity) }]}
-            />
-            <Text style={[styles.itemName, { color: getRarityColor(item.rarity) }]}>{item.name}</Text>
-            <Text style={styles.itemPrice}>{item.gold.total}g</Text>
+          <View style={styles.itemsContainer}>
+            {filteredItems.map((item) => (
+                <TouchableOpacity
+                    key={item.id}
+                    onPress={() => handleItemPress(item)}
+                >
+                  <Animated.View
+                      style={[
+                        styles.itemContainer,
+                        {
+                          borderColor: addedItems.includes(item.id)
+                              ? "#00ffff"
+                              : getRarityColor(item.rarity),
+                          transform: addedItems.includes(item.id)
+                              ? [{ rotate: spin }]
+                              : [],
+                        },
+                      ]}
+                  >
+                    <Image
+                        source={{
+                          uri: `https://ddragon.leagueoflegends.com/cdn/${currentVersion}/img/item/${item.image.full}`,
+                        }}
+                        style={[
+                          styles.itemImage,
+                          {
+                            borderColor: addedItems.includes(item.id)
+                                ? "#00ffff"
+                                : getRarityColor(item.rarity),
+                          },
+                        ]}
+                    />
+                    <Text
+                        style={[
+                          styles.itemName,
+                          { color: getRarityColor(item.rarity) },
+                        ]}
+                    >
+                      {item.name}
+                    </Text>
+                    <Text style={styles.itemPrice}>{item.gold.total}g</Text>
+                  </Animated.View>
+                </TouchableOpacity>
+            ))}
           </View>
-        ))}
+        </ScrollView>
+        {renderItemDetails()}
       </View>
-    </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
     backgroundColor: "#1e1e1e",
+  },
+  buildPanel: {
+    padding: 20,
+    backgroundColor: "#333",
+    borderBottomWidth: 1,
+    borderBottomColor: "#666",
+  },
+  buildPanelTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#ffcc00",
+    marginBottom: 10,
+  },
+  buildItemsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  buildItemImage: {
+    width: 50,
+    height: 50,
+    margin: 5,
+    borderRadius: 5,
+  },
+  itemsScrollView: {
+    flex: 1,
+    padding: 20,
   },
   title: {
     fontSize: 24,
@@ -273,6 +493,63 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: "center",
     color: "#ff4444",
+  },
+  detailsContainer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "#1e1e1e",
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: "#666",
+  },
+  detailsImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 10,
+    alignSelf: "center",
+  },
+  detailsTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#ffcc00",
+    marginTop: 10,
+    textAlign: "center",
+  },
+  detailsPrice: {
+    fontSize: 16,
+    color: "#ffcc00",
+    marginTop: 5,
+    textAlign: "center",
+  },
+  detailsDescription: {
+    fontSize: 14,
+    color: "#fff",
+    marginTop: 10,
+    textAlign: "center",
+  },
+  addButton: {
+    backgroundColor: "#00ffff",
+    padding: 10,
+    borderRadius: 5,
+    marginTop: 15,
+    alignSelf: "center",
+  },
+  addButtonText: {
+    color: "#000",
+    fontWeight: "bold",
+  },
+  closeButton: {
+    backgroundColor: "#ff4444",
+    padding: 10,
+    borderRadius: 5,
+    marginTop: 10,
+    alignSelf: "center",
+  },
+  closeButtonText: {
+    color: "#fff",
+    fontWeight: "bold",
   },
 });
 
