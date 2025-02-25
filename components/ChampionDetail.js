@@ -8,7 +8,25 @@ const ChampionDetailScreen = ({ route }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [savedBuilds, setSavedBuilds] = useState([]);
+    const [championLevel, setChampionLevel] = useState(1); // Ajout de l'état pour le niveau du champion
     const navigation = useNavigation();
+
+    // Calcul des statistiques dynamiques
+    const calculateStat = (base, perLevel, level) => base + perLevel * (level - 1);
+
+    // Statistiques de base du champion
+    const hp = calculateStat(champion.stats.hp, champion.stats.hpperlevel, championLevel);
+    const mp = calculateStat(champion.stats.mp, champion.stats.mpperlevel, championLevel);
+    const armor = calculateStat(champion.stats.armor, champion.stats.armorperlevel, championLevel);
+    const spellblock = calculateStat(champion.stats.spellblock, champion.stats.spellblockperlevel, championLevel);
+    const attackDamage = calculateStat(champion.stats.attackdamage, champion.stats.attackdamageperlevel, championLevel);
+    const attackSpeed = champion.stats.attackspeed + champion.stats.attackspeedperlevel * (championLevel - 1);
+    const moveSpeed = champion.stats.movespeed;
+    const attackRange = champion.stats.attackrange;
+    const hpRegen = calculateStat(champion.stats.hpregen, champion.stats.hpregenperlevel, championLevel);
+    const mpRegen = calculateStat(champion.stats.mpregen, champion.stats.mpregenperlevel, championLevel);
+    const crit = champion.stats.crit + champion.stats.critperlevel * (championLevel - 1);
+    const abilityPower = 0; // Ajout de la statistique AP, initialisée à 0
 
     useEffect(() => {
         const fetchVersion = async () => {
@@ -45,11 +63,113 @@ const ChampionDetailScreen = ({ route }) => {
 
     const renderStats = () => (
         <View style={styles.statsContainer}>
-            {Object.entries(champion.stats).map(([key, value]) => (
-                <Text key={key} style={styles.statText}>
-                    {key}: {value}
-                </Text>
-            ))}
+            <View style={styles.statsGrid}>
+                <View style={styles.statItem}>
+                    <Image
+                        source={{ uri: 'path_to_hp_icon' }} // Replace with the correct icon URL
+                        style={styles.statIcon}
+                    />
+                    <Text style={styles.statText}>HP: {hp}</Text>
+                </View>
+                <View style={styles.statItem}>
+                    <Image
+                        source={{ uri: 'path_to_mp_icon' }} // Replace with the correct icon URL
+                        style={styles.statIcon}
+                    />
+                    <Text style={styles.statText}>MP: {mp}</Text>
+                </View>
+                <View style={styles.statItem}>
+                    <Image
+                        source={{ uri: 'path_to_armor_icon' }} // Replace with the correct icon URL
+                        style={styles.statIcon}
+                    />
+                    <Text style={styles.statText}>Armor: {armor}</Text>
+                </View>
+                <View style={styles.statItem}>
+                    <Image
+                        source={{ uri: 'path_to_spellblock_icon' }} // Replace with the correct icon URL
+                        style={styles.statIcon}
+                    />
+                    <Text style={styles.statText}>MR: {spellblock}</Text>
+                </View>
+                <View style={styles.statItem}>
+                    <Image
+                        source={{ uri: 'path_to_attackdamage_icon' }} // Replace with the correct icon URL
+                        style={styles.statIcon}
+                    />
+                    <Text style={styles.statText}>AD: {attackDamage}</Text>
+                </View>
+                <View style={styles.statItem}>
+                    <Image
+                        source={{ uri: 'path_to_attackspeed_icon' }} // Replace with the correct icon URL
+                        style={styles.statIcon}
+                    />
+                    <Text style={styles.statText}>AS: {attackSpeed.toFixed(2)}</Text>
+                </View>
+                <View style={styles.statItem}>
+                    <Image
+                        source={{ uri: 'path_to_movespeed_icon' }} // Replace with the correct icon URL
+                        style={styles.statIcon}
+                    />
+                    <Text style={styles.statText}>Move Speed: {moveSpeed}</Text>
+                </View>
+                <View style={styles.statItem}>
+                    <Image
+                        source={{ uri: 'path_to_attackrange_icon' }} // Replace with the correct icon URL
+                        style={styles.statIcon}
+                    />
+                    <Text style={styles.statText}>Attack Range: {attackRange}</Text>
+                </View>
+                <View style={styles.statItem}>
+                    <Image
+                        source={{ uri: 'path_to_hpregen_icon' }} // Replace with the correct icon URL
+                        style={styles.statIcon}
+                    />
+                    <Text style={styles.statText}>HP Regen: {hpRegen}</Text>
+                </View>
+                <View style={styles.statItem}>
+                    <Image
+                        source={{ uri: 'path_to_mpregen_icon' }} // Replace with the correct icon URL
+                        style={styles.statIcon}
+                    />
+                    <Text style={styles.statText}>MP Regen: {mpRegen}</Text>
+                </View>
+                <View style={styles.statItem}>
+                    <Image
+                        source={{ uri: 'path_to_crit_icon' }} // Replace with the correct icon URL
+                        style={styles.statIcon}
+                    />
+                    <Text style={styles.statText}>Crit: {crit}%</Text>
+                </View>
+                <View style={styles.statItem}>
+                    <Image
+                        source={{ uri: 'path_to_ap_icon' }} // Replace with the correct icon URL
+                        style={styles.statIcon}
+                    />
+                    <Text style={styles.statText}>AP: {abilityPower}</Text>
+                </View>
+            </View>
+        </View>
+    );
+
+
+    const renderLevelControl = () => (
+        <View style={styles.levelContainer}>
+            <Text style={styles.levelText}>Niveau: {championLevel}</Text>
+            <View style={styles.levelButtonsContainer}>
+                <Pressable
+                    style={styles.levelButton}
+                    onPress={() => setChampionLevel(prevLevel => Math.max(1, prevLevel - 1))}
+                >
+                    <Text style={styles.levelButtonText}>-</Text>
+                </Pressable>
+                <Pressable
+                    style={styles.levelButton}
+                    onPress={() => setChampionLevel(prevLevel => Math.min(18, prevLevel + 1))}
+                >
+                    <Text style={styles.levelButtonText}>+</Text>
+                </Pressable>
+            </View>
         </View>
     );
 
@@ -88,7 +208,7 @@ const ChampionDetailScreen = ({ route }) => {
     const renderBuilds = () => (
         <View>
             <Text style={styles.subTitle}>Vos builds :</Text>
-            <Pressable 
+            <Pressable
                 style={({ pressed }) => [
                     styles.addButton,
                     { backgroundColor: pressed ? "#e6b800" : "#ffcc00" }
@@ -103,19 +223,21 @@ const ChampionDetailScreen = ({ route }) => {
     return (
         <ScrollView style={styles.container}>
             <Text style={styles.title}>{champion.name}</Text>
-            
+
             <Image
                 source={{
                     uri: `https://ddragon.leagueoflegends.com/cdn/${currentVersion}/img/champion/${champion.id}.png`
                 }}
                 style={styles.championImage}
             />
-            
+
             <Text style={styles.role}>Role: {champion.tags.join(", ")}</Text>
             <Text style={styles.description}>{champion.blurb}</Text>
 
             <Text style={styles.subTitle}>Statistiques de base :</Text>
             {renderStats()}
+
+            {renderLevelControl()} {/* Afficher le contrôle de niveau */}
 
             <Text style={styles.subTitle}>Sorts :</Text>
             {renderPassive()}
@@ -199,6 +321,15 @@ const styles = StyleSheet.create({
         marginBottom: 5,
         color: "#ccc",
     },
+    statsGrid: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        justifyContent: "space-between",
+    },
+    statItem: {
+        width: "48%",
+        marginBottom: 8,
+    },
     spellContainer: {
         marginBottom: 20,
         padding: 10,
@@ -233,12 +364,55 @@ const styles = StyleSheet.create({
         alignItems: "center",
         alignSelf: "center",
         marginTop: 10,
+        backgroundColor: "#ffcc00",
     },
     addButtonText: {
         fontSize: 30,
         color: "#1e1e1e",
         fontWeight: "bold",
     },
+    // Nouvelles styles pour le système de niveau
+    levelContainer: {
+        marginBottom: 20,
+        padding: 15,
+        backgroundColor: "#2c2c2c",
+        borderRadius: 8,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.5,
+        shadowRadius: 10,
+    },
+    levelText: {
+        fontSize: 18,
+        color: "#ccc",
+        marginBottom: 10,
+        textAlign: "center",
+    },
+    levelButtonsContainer: {
+        flexDirection: "row",
+        justifyContent: "center", // Centrer les boutons
+        alignItems: "center",
+        gap: 10, // Réduire l'écart entre les boutons
+    },
+    levelButton: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "#ffcc00",
+    },
+    levelButtonText: {
+        fontSize: 24,
+        fontWeight: "bold",
+        color: "#1e1e1e",
+    },
+    statIcon: {
+        width: 20,
+        height: 20,
+        marginRight: 8,
+    },
+
 });
 
 export default ChampionDetailScreen;
