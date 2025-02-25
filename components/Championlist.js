@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet, TouchableOpacity, Modal, TextInput } from "react-native";
+import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet, Pressable, Modal, TextInput } from "react-native";
 import axios from "axios";
 import { useNavigation } from "@react-navigation/native";
 
@@ -11,14 +11,31 @@ const ChampionsList = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRole, setSelectedRole] = useState("");
-  const version = "15.3.1";
+  const [version, setVersion] = useState(""); // Pour stocker la version dynamique
   const navigation = useNavigation();
 
   useEffect(() => {
+    // Fonction pour récupérer la version la plus récente
+    const fetchLatestVersion = async () => {
+      try {
+        const response = await axios.get("https://ddragon.leagueoflegends.com/api/versions.json");
+        const latestVersion = response.data[0]; // La version la plus récente est toujours en premier
+        setVersion(latestVersion);
+      } catch (error) {
+        console.error("Erreur lors de la récupération de la version :", error);
+      }
+    };
+
+    fetchLatestVersion();
+  }, []);
+
+  useEffect(() => {
+    if (!version) return; // Attendre que la version soit récupérée
+
     const fetchChampions = async () => {
       try {
         const response = await axios.get(
-            `https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/champion.json`
+            `https://ddragon.leagueoflegends.com/cdn/${version}/data/fr_FR/champion.json`
         );
         const championsData = Object.values(response.data.data);
 
@@ -42,7 +59,7 @@ const ChampionsList = () => {
     };
 
     fetchChampions();
-  }, []);
+  }, [version]); // Recharger les champions lorsque la version change
 
   useEffect(() => {
     const filtered = champions.filter(champion =>
@@ -61,15 +78,6 @@ const ChampionsList = () => {
     navigation.navigate("ChampionDetail", { champion });
   };
 
-  const roleTranslations = {
-    "Assassin": "Assassin",
-    "Fighter": "Combattant",
-    "Mage": "Mage",
-    "Marksman": "Tireur",
-    "Support": "Support",
-    "Tank": "Tank",
-  };
-
   const roles = ["", "Assassin", "Fighter", "Mage", "Marksman", "Support", "Tank"];
 
   if (loading) return <ActivityIndicator size="large" color="#0000ff" />;
@@ -86,13 +94,13 @@ const ChampionsList = () => {
         />
         <View style={styles.roleContainer}>
           {roles.map(role => (
-              <TouchableOpacity
+              <Pressable
                   key={role}
                   style={[styles.roleButton, selectedRole === role && styles.selectedRole]}
                   onPress={() => setSelectedRole(role)}
               >
-                <Text style={styles.roleText}>{role ? roleTranslations[role] : "Tous"}</Text>
-              </TouchableOpacity>
+                <Text style={styles.roleText}>{role || "Tous"}</Text>
+              </Pressable>
           ))}
         </View>
         <FlatList
@@ -100,7 +108,7 @@ const ChampionsList = () => {
             keyExtractor={(item) => item.id}
             numColumns={3}
             renderItem={({ item }) => (
-                <TouchableOpacity
+                <Pressable
                     onPress={() => handleChampionClick(item)}
                     onLongPress={() => handleChampionNavigation(item)}
                     style={styles.championContainer}
@@ -112,7 +120,7 @@ const ChampionsList = () => {
                       style={styles.championImage}
                   />
                   <Text style={styles.championName}>{item.name}</Text>
-                </TouchableOpacity>
+                </Pressable>
             )}
         />
         <Modal
@@ -126,15 +134,23 @@ const ChampionsList = () => {
               {selectedChampion && (
                   <>
                     <Text style={styles.modalTitle}>{selectedChampion.name}</Text>
-                    <Text style={styles.modalText}>
-                      Rôle: {selectedChampion.tags.map(tag => roleTranslations[tag] || tag).join(", ")}
-                    </Text>
+                    <Text style={styles.modalText}>Role: {selectedChampion.tags.join(", ")}</Text>
                     <Text style={styles.modalText}>Description: {selectedChampion.blurb}</Text>
+                    <Text style={styles.modalText}>Sorts:</Text>
+                    {Array.isArray(selectedChampion.spells) && selectedChampion.spells.length > 0 ? (
+                        selectedChampion.spells.map((spell, index) => (
+                            <View key={index} style={styles.spellContainer}>
+                              <Text style={styles.modalText}>- {spell.name}: {spell.description}</Text>
+                            </View>
+                        ))
+                    ) : (
+                        <Text style={styles.modalText}>Aucun sort disponible</Text>
+                    )}
                   </>
               )}
-              <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
+              <Pressable onPress={() => setModalVisible(false)} style={styles.closeButton}>
                 <Text style={styles.closeButtonText}>Fermer</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
           </View>
         </Modal>
