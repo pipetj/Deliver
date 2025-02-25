@@ -1,17 +1,25 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet, Pressable, Modal, TextInput } from "react-native";
+import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet, Pressable, TextInput, Dimensions } from "react-native";
 import axios from "axios";
 import { useNavigation } from "@react-navigation/native";
+
+// Définition des dimensions en dehors du composant
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+
+// Calculs responsifs basés sur la taille de l'écran
+const getResponsiveSize = (size) => screenWidth * (size / 975); // Basé sur un design pour iPhone 8
+const columnCount = screenWidth > 700 ? 4 : 3; // Plus de colonnes sur grand écran
+const isMobile = screenWidth <= 600; // Condition pour détecter un petit écran
 
 const ChampionsList = () => {
   const [champions, setChampions] = useState([]);
   const [filteredChampions, setFilteredChampions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedChampion, setSelectedChampion] = useState(null);
-  const [modalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRole, setSelectedRole] = useState("");
-  const [version, setVersion] = useState(""); // Pour stocker la version dynamique
+  const [menuOpen, setMenuOpen] = useState(false); // État pour contrôler le menu burger
+  const [version, setVersion] = useState(null); // Ajout de la variable version
   const navigation = useNavigation();
 
   useEffect(() => {
@@ -20,14 +28,14 @@ const ChampionsList = () => {
       try {
         const response = await axios.get("https://ddragon.leagueoflegends.com/api/versions.json");
         const latestVersion = response.data[0]; // La version la plus récente est toujours en premier
-        setVersion(latestVersion);
+        setVersion(latestVersion); // Définir la version ici
       } catch (error) {
         console.error("Erreur lors de la récupération de la version :", error);
       }
     };
 
     fetchLatestVersion();
-  }, []);
+  }, []); // Appel au début pour récupérer la version
 
   useEffect(() => {
     if (!version) return; // Attendre que la version soit récupérée
@@ -74,43 +82,75 @@ const ChampionsList = () => {
     navigation.navigate('ChampionDetail', { champion });
   };
 
-  const handleChampionNavigation = (champion) => {
-    navigation.navigate("ChampionDetail", { champion });
-  };
-
   const roles = ["", "Assassin", "Fighter", "Mage", "Marksman", "Support", "Tank"];
 
   if (loading) return <ActivityIndicator size="large" color="#0000ff" />;
 
   return (
       <View style={styles.container}>
-        <Text style={styles.title}>Liste des Champions</Text>
-        <TextInput
-            style={styles.searchBar}
-            placeholder="Rechercher un champion..."
-            placeholderTextColor="#888"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-        />
-        <View style={styles.roleContainer}>
-          {roles.map(role => (
-              <Pressable
-                  key={role}
-                  style={[styles.roleButton, selectedRole === role && styles.selectedRole]}
-                  onPress={() => setSelectedRole(role)}
-              >
-                <Text style={styles.roleText}>{role || "Tous"}</Text>
-              </Pressable>
-          ))}
-        </View>
+        {/* Menu burger au-dessus de la liste */}
+        {isMobile ? (
+            <Pressable onPress={() => setMenuOpen(!menuOpen)} style={styles.menuButton}>
+              <Text style={styles.menuButtonText}>☰</Text>
+            </Pressable>
+        ) : (
+            // Menu classique pour grand écran
+            <View style={styles.menu}>
+              <Text style={styles.title}>Liste des Champions</Text>
+              <TextInput
+                  style={styles.searchBar}
+                  placeholder="Rechercher un champion..."
+                  placeholderTextColor="#888"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+              />
+              <View style={styles.roleContainer}>
+                {roles.map(role => (
+                    <Pressable
+                        key={role}
+                        style={[styles.roleButton, selectedRole === role && styles.selectedRole]}
+                        onPress={() => setSelectedRole(role)}
+                    >
+                      <Text style={styles.roleText}>{role || "Tous"}</Text>
+                    </Pressable>
+                ))}
+              </View>
+            </View>
+        )}
+
+        {/* Menu burger qui apparaît lorsque le menu burger est ouvert */}
+        {menuOpen && isMobile && (
+            <View style={styles.burgerMenu}>
+              <Text style={styles.title}>Liste des Champions</Text>
+              <TextInput
+                  style={styles.searchBar}
+                  placeholder="Rechercher un champion..."
+                  placeholderTextColor="#888"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+              />
+              <View style={styles.roleContainer}>
+                {roles.map(role => (
+                    <Pressable
+                        key={role}
+                        style={[styles.roleButton, selectedRole === role && styles.selectedRole]}
+                        onPress={() => setSelectedRole(role)}
+                    >
+                      <Text style={styles.roleText}>{role || "Tous"}</Text>
+                    </Pressable>
+                ))}
+              </View>
+            </View>
+        )}
+
+        {/* Liste des champions */}
         <FlatList
             data={filteredChampions}
             keyExtractor={(item) => item.id}
-            numColumns={3}
+            numColumns={columnCount}
             renderItem={({ item }) => (
                 <Pressable
                     onPress={() => handleChampionClick(item)}
-                    onLongPress={() => handleChampionNavigation(item)}
                     style={styles.championContainer}
                 >
                   <Image
@@ -122,38 +162,9 @@ const ChampionsList = () => {
                   <Text style={styles.championName}>{item.name}</Text>
                 </Pressable>
             )}
+            contentContainerStyle={[styles.flatListContainer, menuOpen && { marginTop: getResponsiveSize(220) }]}
+            showsVerticalScrollIndicator={false}
         />
-        <Modal
-            visible={modalVisible}
-            animationType="slide"
-            transparent={true}
-            onRequestClose={() => setModalVisible(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              {selectedChampion && (
-                  <>
-                    <Text style={styles.modalTitle}>{selectedChampion.name}</Text>
-                    <Text style={styles.modalText}>Role: {selectedChampion.tags.join(", ")}</Text>
-                    <Text style={styles.modalText}>Description: {selectedChampion.blurb}</Text>
-                    <Text style={styles.modalText}>Sorts:</Text>
-                    {Array.isArray(selectedChampion.spells) && selectedChampion.spells.length > 0 ? (
-                        selectedChampion.spells.map((spell, index) => (
-                            <View key={index} style={styles.spellContainer}>
-                              <Text style={styles.modalText}>- {spell.name}: {spell.description}</Text>
-                            </View>
-                        ))
-                    ) : (
-                        <Text style={styles.modalText}>Aucun sort disponible</Text>
-                    )}
-                  </>
-              )}
-              <Pressable onPress={() => setModalVisible(false)} style={styles.closeButton}>
-                <Text style={styles.closeButtonText}>Fermer</Text>
-              </Pressable>
-            </View>
-          </View>
-        </Modal>
       </View>
   );
 };
@@ -161,85 +172,100 @@ const ChampionsList = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#121212",
+    backgroundColor: "#1c1c1e",
+    padding: getResponsiveSize(1),
+    alignItems: "center",
+  },
+  menuButton: {
+    position: "absolute",
+    top: 20,
+    left: 20,
     padding: 10,
+    backgroundColor: "#fbcd03",
+    borderRadius: 8,
+    zIndex: 10,
+  },
+  menuButtonText: {
+    fontSize: 30,
+    color: "#1c1c1e",
   },
   title: {
-    fontSize: 24,
+    fontSize: getResponsiveSize(28),
     fontWeight: "bold",
-    color: "#fff",
+    color: "#fbcd03", /* Couleur principale pour le titre */
     textAlign: "center",
-    marginBottom: 10,
+    marginBottom: getResponsiveSize(20),
+    marginTop: getResponsiveSize(10),
+  },
+  menu: {
+    backgroundColor: "#2c2c2e",
+    width: '100%',
+    height: getResponsiveSize(190),
+    padding: getResponsiveSize(15),
+    borderRadius: 10,
+    marginBottom: getResponsiveSize(15),
   },
   searchBar: {
-    backgroundColor: "#fff",
-    padding: 10,
-    borderRadius: 5,
-    marginBottom: 10,
-    color: "#000",
+    backgroundColor: "#fbcd03", /* Couleur principale pour la barre de recherche */
+    padding: getResponsiveSize(12),
+    borderRadius: 10,
+    marginBottom: getResponsiveSize(15),
+    color: "#1c1c1e", /* Texte sombre */
+    width: "90%",
+    textAlign: "center",
+    fontSize: getResponsiveSize(16),
   },
   roleContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
-    marginBottom: 10,
+    marginBottom: getResponsiveSize(20),
   },
   roleButton: {
-    backgroundColor: "#333",
-    padding: 8,
-    borderRadius: 5,
-    margin: 5,
+    backgroundColor: "#444",
+    paddingVertical: getResponsiveSize(10),
+    paddingHorizontal: getResponsiveSize(15),
+    borderRadius: 8,
+    margin: getResponsiveSize(5),
   },
   selectedRole: {
-    backgroundColor: "#1D3D47",
+    backgroundColor: "#fbcd03",
   },
   roleText: {
     color: "#fff",
+    fontWeight: "bold",
+    fontSize: getResponsiveSize(14),
+  },
+  flatListContainer: {
+    paddingBottom: getResponsiveSize(20),
+    alignItems: 'center',
   },
   championContainer: {
     alignItems: "center",
-    margin: 10,
+    margin: screenWidth * 0.02,
+    backgroundColor: "#2c2c2e",
+    padding: screenWidth * 0.03,
+    borderRadius: 15,
+    width: screenWidth / columnCount - (screenWidth * 0.06),
+    elevation: 5,
+    shadowColor: "#fbcd03",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 3.25,
+    shadowRadius: 3.84,
   },
   championImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 10,
+    width: screenWidth / columnCount - (screenWidth * 0.12),
+    height: screenWidth / columnCount - (screenWidth * 0.12),
+    borderRadius: 12,
   },
   championName: {
-    color: "#fff",
-    marginTop: 5,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
-  },
-  modalContent: {
-    backgroundColor: "#fff",
-    padding: 20,
-    borderRadius: 10,
-    width: "80%",
-  },
-  modalTitle: {
-    fontSize: 24,
+    color: "#fbcd03",
+    marginTop: getResponsiveSize(12),
     fontWeight: "bold",
-    marginBottom: 10,
-  },
-  modalText: {
-    fontSize: 16,
-    marginBottom: 10,
-  },
-  closeButton: {
-    backgroundColor: "#1D3D47",
-    padding: 10,
-    borderRadius: 5,
-    marginTop: 20,
-  },
-  closeButtonText: {
-    color: "#fff",
     textAlign: "center",
-    fontWeight: "bold",
+    fontSize: getResponsiveSize(14),
+    width: "100%",
+    flexShrink: 1,
   },
 });
 
