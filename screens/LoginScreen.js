@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, TextInput, Button, Alert } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { login } from "../frontend/src/api/api";
+import { login } from "../api/api";
 
 const LoginScreen = ({ navigation }) => {
     const [email, setEmail] = useState("");
