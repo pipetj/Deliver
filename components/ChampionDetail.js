@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useContext } from "react";
-import { ScrollView, View, Text, StyleSheet, Image, Pressable } from "react-native";
+import { ScrollView, View, Text, StyleSheet, Image, Pressable, Alert } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { AuthContext } from '../context/AuthContext';
-import { getBuilds, updateBuild } from '../api/api';
+import { getBuilds, updateBuild, deleteBuild } from '../api/api';
 
 const ChampionDetailScreen = ({ route }) => {
   const champion = route.params?.champion;
@@ -41,6 +41,7 @@ const ChampionDetailScreen = ({ route }) => {
         setCurrentVersion(versions[0]);
         if (token) {
           const buildsResponse = await getBuilds(token, champion.id);
+          console.log("Builds récupérés :", buildsResponse.data); // Log
           setSavedBuilds(buildsResponse.data);
         }
         setLoading(false);
@@ -64,6 +65,55 @@ const ChampionDetailScreen = ({ route }) => {
       console.error("Erreur lors du rafraîchissement des builds:", err);
       setError(err.message);
     }
+  };
+
+  const handleEditBuild = async (buildId, newItems) => {
+    if (!token) {
+      Alert.alert("Erreur", "Vous devez être connecté pour modifier un build.");
+      return;
+    }
+
+    try {
+      const itemsString = JSON.stringify(newItems);
+      await updateBuild(token, buildId, itemsString);
+      await refreshBuilds();
+      Alert.alert("Succès", "Build mis à jour avec succès.");
+    } catch (err) {
+      console.error("Erreur lors de la modification:", err);
+      Alert.alert("Erreur", "Impossible de modifier le build. Veuillez réessayer.");
+    }
+  };
+
+  const handleDeleteBuild = async (buildId) => {
+    console.log("Début de handleDeleteBuild, buildId :", buildId, "token :", token); // Log
+    if (!token) {
+      Alert.alert("Erreur", "Vous devez être connecté pour supprimer un build.");
+      return;
+    }
+
+    Alert.alert(
+      "Confirmation",
+      "Voulez-vous vraiment supprimer ce build ?",
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Supprimer",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              console.log("Tentative de suppression, buildId :", buildId); // Log
+              const response = await deleteBuild(token, buildId);
+              console.log("Réponse de deleteBuild :", response.data); // Log
+              await refreshBuilds();
+              Alert.alert("Succès", "Build supprimé avec succès.");
+            } catch (err) {
+              console.error("Erreur lors de la suppression :", err.response?.data || err.message); // Log détaillé
+              Alert.alert("Erreur", `Impossible de supprimer le build : ${err.response?.data?.error || err.message}`);
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (loading) {
@@ -162,20 +212,31 @@ const ChampionDetailScreen = ({ route }) => {
               />
             ))}
           </View>
-          <Pressable
-            style={({ pressed }) => [
-              styles.editButton,
-              { backgroundColor: pressed ? "#e6b800" : "#ffcc00" }
-            ]}
-            onPress={() => navigation.navigate("ItemSelectionScreen", { 
-              championId: champion.id, 
-              buildId: build.id, 
-              initialItems: JSON.parse(build.items),
-              onSaveBuild: (newItems) => handleEditBuild(build.id, newItems)
-            })}
-          >
-            <Text style={styles.editButtonText}>Modifier</Text>
-          </Pressable>
+          <View style={styles.buildButtonsContainer}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.editButton,
+                { backgroundColor: pressed ? "#e6b800" : "#ffcc00" }
+              ]}
+              onPress={() => navigation.navigate("ItemSelectionScreen", { 
+                championId: champion.id, 
+                buildId: build.id, 
+                initialItems: JSON.parse(build.items),
+                onSaveBuild: (newItems) => handleEditBuild(build.id, newItems)
+              })}
+            >
+              <Text style={styles.editButtonText}>Modifier</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.deleteButton,
+                { backgroundColor: pressed ? "#cc0000" : "#ff4444" }
+              ]}
+              onPress={() => handleDeleteBuild(build.id)}
+            >
+              <Text style={styles.deleteButtonText}>Supprimer</Text>
+            </Pressable>
+          </View>
         </View>
       ))}
       <Pressable
@@ -185,29 +246,13 @@ const ChampionDetailScreen = ({ route }) => {
         ]}
         onPress={() => navigation.navigate("ItemSelectionScreen", { 
           championId: champion.id, 
-          onSaveBuild: () => refreshBuilds() // Rafraîchir après ajout
+          onSaveBuild: () => refreshBuilds()
         })}
       >
         <Text style={styles.addButtonText}>+</Text>
       </Pressable>
     </View>
   );
-
-  const handleEditBuild = async (buildId, newItems) => {
-    if (!token) {
-      Alert.alert("Erreur", "Vous devez être connecté pour modifier un build.");
-      return;
-    }
-
-    try {
-      const itemsString = JSON.stringify(newItems);
-      await updateBuild(token, buildId, itemsString);
-      await refreshBuilds();
-    } catch (err) {
-      console.error("Erreur lors de la modification:", err);
-      Alert.alert("Erreur", "Impossible de modifier le build. Veuillez réessayer.");
-    }
-  };
 
   return (
     <ScrollView style={styles.container}>
@@ -230,6 +275,7 @@ const ChampionDetailScreen = ({ route }) => {
   );
 };
 
+// Styles inchangés
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -368,16 +414,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#ffcc00",
   },
+  buildButtonsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginTop: 10,
+  },
   editButton: {
     paddingVertical: 8,
     paddingHorizontal: 15,
     borderRadius: 5,
-    alignSelf: "center",
     backgroundColor: "#ffcc00",
   },
   editButtonText: {
     fontSize: 16,
     color: "#1e1e1e",
+    fontWeight: "bold",
+  },
+  deleteButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderRadius: 5,
+    backgroundColor: "#ff4444",
+  },
+  deleteButtonText: {
+    fontSize: 16,
+    color: "#fff",
     fontWeight: "bold",
   },
   addButton: {

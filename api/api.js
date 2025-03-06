@@ -31,3 +31,10 @@ export const updateBuild = async (token, buildId, items, runes = "") => {
     { headers: { Authorization: `Bearer ${token}` } }
   );
 };
+
+// api.js
+export const deleteBuild = async (token, buildId) => {
+  return axios.delete(`${API_URL}/builds/${buildId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+};

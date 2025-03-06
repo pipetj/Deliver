@@ -11,9 +11,10 @@ import {
   Alert,
   Dimensions,
   SafeAreaView,
+  Animated,
 } from "react-native";
 import { AuthContext } from '../context/AuthContext';
-import { createBuild } from '../api/api';
+import { createBuild, updateBuild } from '../api/api';
 
 // Types
 interface Item {
@@ -35,7 +36,7 @@ interface Item {
 
 interface Props {
   navigation: any;
-  route: { params?: { championId?: string; onSaveBuild?: (items: string[]) => void } };
+  route: { params?: { championId?: string; buildId?: string; initialItems?: string[]; onSaveBuild?: (items: string[]) => void } };
 }
 
 // Constantes
@@ -46,8 +47,8 @@ const ITEMS_CATEGORIES = ["Mage", "Assassin", "Tank", "Support", "Tireur", "Comb
 const RARITY_ORDER = ["LEGENDARY", "EPIC", "BASIC", "STARTER"];
 
 const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
-  const { championId, onSaveBuild } = route.params || {};
-  const { token } = useContext(AuthContext); // Récupérer le token depuis AuthContext
+  const { championId, onSaveBuild, buildId, initialItems } = route.params || {};
+  const { token } = useContext(AuthContext);
   const [items, setItems] = useState<Item[]>([]);
   const [filteredItems, setFilteredItems] = useState<Item[]>([]);
   const [currentVersion, setCurrentVersion] = useState<string>("");
@@ -57,10 +58,23 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [categories] = useState<string[]>(["all", ...ITEMS_CATEGORIES]);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
-  const [addedItems, setAddedItems] = useState<string[]>([]);
+  const [addedItems, setAddedItems] = useState<string[]>(initialItems || []);
+  const [isSaving, setIsSaving] = useState(false);
+  const [rotation] = useState(new Animated.Value(0)); // Pour l'animation du dégradé
 
   const screenWidth = Dimensions.get("window").width;
   const itemWidth = screenWidth < 400 ? (screenWidth - 60) / 3 : 100;
+
+  // Animation du dégradé
+  useEffect(() => {
+    Animated.loop(
+      Animated.timing(rotation, {
+        toValue: 1,
+        duration: 2000, // Durée d'un tour complet (2 secondes)
+        useNativeDriver: true,
+      })
+    ).start();
+  }, [rotation]);
 
   const getItemCategory = useCallback((item: Item): string => {
     if (item.tags?.includes("Boots") || item.id === "3006" || item.name.includes("Berserker")) return "Botte";
@@ -108,6 +122,13 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
     }
     return false;
   }, [addedItems, items]);
+
+  useEffect(() => {
+    console.log("initialItems reçus :", initialItems);
+    if (initialItems && addedItems.length === 0) {
+      setAddedItems(initialItems);
+    }
+  }, [initialItems]);
 
   useEffect(() => {
     const fetchItems = async () => {
@@ -203,56 +224,65 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
 
   const handleItemPress = (item: Item) => setSelectedItem(item);
 
-  const handleAddItem = (itemId: string) => {
+  const handleToggleItem = (itemId: string) => {
     if (addedItems.includes(itemId)) {
-      Alert.alert("Information", "Cet item est déjà dans votre build.");
-      return;
+      // Retirer l'item
+      setAddedItems(addedItems.filter((id) => id !== itemId));
+    } else {
+      // Ajouter l'item
+      if (addedItems.length >= MAX_ITEMS) {
+        Alert.alert("Limite atteinte", "Vous ne pouvez pas avoir plus de 6 items dans votre build.");
+        return;
+      }
+      const item = items.find((i) => i.id === itemId);
+      if (item && isItemIncompatible(item)) {
+        Alert.alert("Item incompatible", "Cet item ne peut pas être ajouté car il est incompatible avec votre build actuel.");
+        return;
+      }
+      setAddedItems([...addedItems, itemId]);
     }
-    if (addedItems.length >= MAX_ITEMS) {
-      Alert.alert("Limite atteinte", "Vous ne pouvez pas avoir plus de 6 items dans votre build.");
-      return;
-    }
-    const item = items.find((i) => i.id === itemId);
-    if (item && isItemIncompatible(item)) {
-      Alert.alert("Item incompatible", "Cet item ne peut pas être ajouté car il est incompatible avec votre build actuel.");
-      return;
-    }
-    setAddedItems([...addedItems, itemId]);
     setSelectedItem(null);
   };
 
-  const handleRemoveItem = (itemId: string) => {
-    setAddedItems(addedItems.filter((id) => id !== itemId));
-  };
-
   const handleSaveBuild = async () => {
-    if (!token) {
-      Alert.alert("Erreur", "Vous devez être connecté pour sauvegarder un build.");
+    if (!token || isSaving) {
+      Alert.alert("Erreur", isSaving ? "Sauvegarde en cours..." : "Vous devez être connecté pour sauvegarder un build.");
       return;
     }
-
+    
     if (addedItems.length === 0) {
       Alert.alert("Erreur", "Aucun item sélectionné pour le build.");
       return;
     }
+    
+    if (!buildId && !championId) {
+      Alert.alert("Erreur", "Champion non spécifié pour créer un build.");
+      return;
+    }
 
+    setIsSaving(true);
     try {
       const sortedItems = [...addedItems].sort((a, b) => {
         const itemA = items.find(i => i.id === a);
         const itemB = items.find(i => i.id === b);
         return RARITY_ORDER.indexOf(itemA?.rarity || "") - RARITY_ORDER.indexOf(itemB?.rarity || "");
       });
-
-      // Sauvegarde via l'API avec le token
-      await createBuild(token, championId, JSON.stringify(sortedItems));
-
+  
+      if (buildId) {
+        await updateBuild(token, buildId, JSON.stringify(sortedItems));
+      } else {
+        await createBuild(token, championId, JSON.stringify(sortedItems));
+      }
+  
       if (onSaveBuild) {
         onSaveBuild(sortedItems);
       }
       navigation.goBack();
     } catch (err) {
-      console.error("Erreur lors de la sauvegarde:", err);
+      console.error("Erreur lors de la sauvegarde:", err.response?.data || err.message);
       Alert.alert("Erreur", "Impossible de sauvegarder le build. Veuillez réessayer.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -267,6 +297,7 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
 
     const descriptionWithBreaks = stripHtmlTags(selectedItem.description);
     const descriptionLines = descriptionWithBreaks.split("\n").filter(line => line.trim() !== "");
+    const isAdded = addedItems.includes(selectedItem.id);
 
     return (
       <View style={styles.detailsContainer}>
@@ -286,8 +317,11 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
           </View>
         </ScrollView>
         <View style={styles.buttonContainer}>
-          <Pressable style={styles.addButton} onPress={() => handleAddItem(selectedItem.id)}>
-            <Text style={styles.addButtonText}>Ajouter</Text>
+          <Pressable
+            style={[styles.addButton, isAdded && styles.removeButton]}
+            onPress={() => handleToggleItem(selectedItem.id)}
+          >
+            <Text style={styles.addButtonText}>{isAdded ? "Retirer" : "Ajouter"}</Text>
           </Pressable>
           <Pressable style={styles.closeButton} onPress={() => setSelectedItem(null)}>
             <Text style={styles.closeButtonText}>Fermer</Text>
@@ -304,12 +338,17 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
       return RARITY_ORDER.indexOf(itemA?.rarity || "") - RARITY_ORDER.indexOf(itemB?.rarity || "");
     });
 
+    const spin = rotation.interpolate({
+      inputRange: [0, 1],
+      outputRange: ['0deg', '360deg'],
+    });
+
     return (
       <View style={styles.buildPanel}>
         <View style={styles.buildPanelHeader}>
           <Text style={styles.buildPanelTitle}>Votre Build ({addedItems.length}/6)</Text>
-          <Pressable style={styles.saveButton} onPress={handleSaveBuild}>
-            <Text style={styles.saveButtonText}>Sauvegarder</Text>
+          <Pressable style={styles.saveButton} onPress={handleSaveBuild} disabled={isSaving}>
+            <Text style={styles.saveButtonText}>{isSaving ? "Sauvegarde..." : "Sauvegarder"}</Text>
           </Pressable>
         </View>
         <View style={styles.buildItemsContainer}>
@@ -317,12 +356,14 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
             const itemId = sortedAddedItems[index];
             const item = itemId ? items.find((i) => i.id === itemId) : null;
             return (
-              <Pressable key={index} style={styles.buildItemSlot} onPress={() => item && handleRemoveItem(itemId)}>
+              <Pressable key={index} style={styles.buildItemSlot} onPress={() => item && handleToggleItem(itemId)}>
                 {item ? (
-                  <Image
-                    source={{ uri: `https://ddragon.leagueoflegends.com/cdn/${currentVersion}/img/item/${item.image.full}` }}
-                    style={[styles.buildItemImage, { borderColor: getRarityColor(item.rarity!) }]}
-                  />
+                  <Animated.View style={[styles.animatedBorder, { transform: [{ rotate: spin }] }]}>
+                    <Image
+                      source={{ uri: `https://ddragon.leagueoflegends.com/cdn/${currentVersion}/img/item/${item.image.full}` }}
+                      style={[styles.buildItemImage, { borderColor: getRarityColor(item.rarity!) }]}
+                    />
+                  </Animated.View>
                 ) : (
                   <View style={styles.emptySlot}>
                     <Text style={styles.emptySlotText}>+</Text>
@@ -411,6 +452,18 @@ const styles = StyleSheet.create({
   buildItemsContainer: { flexDirection: "row", justifyContent: "space-around" },
   buildItemSlot: { width: 46, height: 46, justifyContent: "center", alignItems: "center", margin: 2 },
   buildItemImage: { width: 42, height: 42, borderRadius: 4, borderWidth: 2 },
+  animatedBorder: {
+    width: 46,
+    height: 46,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderStyle: "solid",
+    borderColor: "transparent",
+    backgroundImage: "linear-gradient(45deg, #ff0000, #00ff00, #ff0000)",
+    backgroundOrigin: "border-box",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   emptySlot: { width: 42, height: 42, borderRadius: 4, borderWidth: 1, borderColor: "#666", borderStyle: "dashed", justifyContent: "center", alignItems: "center", backgroundColor: "rgba(255, 255, 255, 0.1)" },
   emptySlotText: { color: "#666", fontSize: 20 },
   filtersContainer: { padding: 10, backgroundColor: "#2a2a2a" },
