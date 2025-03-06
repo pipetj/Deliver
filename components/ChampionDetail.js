@@ -12,6 +12,7 @@ const ChampionDetailScreen = ({ route }) => {
   const [error, setError] = useState(null);
   const [savedBuilds, setSavedBuilds] = useState([]);
   const [championLevel, setChampionLevel] = useState(1);
+  const [selectedBuildId, setSelectedBuildId] = useState(null);
   const navigation = useNavigation();
 
   if (!champion) {
@@ -20,50 +21,104 @@ const ChampionDetailScreen = ({ route }) => {
 
   const calculateStat = (base, perLevel, level) => base + perLevel * (level - 1);
 
-  const hp = calculateStat(champion.stats.hp, champion.stats.hpperlevel, championLevel);
-  const mp = calculateStat(champion.stats.mp, champion.stats.mpperlevel, championLevel);
-  const armor = calculateStat(champion.stats.armor, champion.stats.armorperlevel, championLevel);
-  const spellblock = calculateStat(champion.stats.spellblock, champion.stats.spellblockperlevel, championLevel);
-  const attackDamage = calculateStat(champion.stats.attackdamage, champion.stats.attackdamageperlevel, championLevel);
-  const attackSpeed = champion.stats.attackspeed + champion.stats.attackspeedperlevel * (championLevel - 1);
+  const calculateBuildStats = () => {
+    if (!selectedBuildId) return {};
+    const selectedBuild = savedBuilds.find(build => build.id === selectedBuildId);
+    if (!selectedBuild || !Array.isArray(JSON.parse(selectedBuild.items))) return {};
+
+    const items = JSON.parse(selectedBuild.items);
+    let bonuses = {
+      hp: 0,
+      mp: 0,
+      armor: 0,
+      spellblock: 0,
+      attackDamage: 0,
+      attackSpeed: 0,
+      hpRegen: 0,
+      mpRegen: 0,
+      crit: 0,
+      abilityPower: 0,
+    };
+
+    items.forEach(itemId => {
+      const itemStats = {
+        "3006": { attackSpeed: 0.25, attackDamage: 25 },
+        "3089": { abilityPower: 120 },
+        "3065": { hp: 450, hpRegen: 10 },
+      };
+      const stats = itemStats[itemId] || {};
+      bonuses.hp += stats.hp || 0;
+      bonuses.mp += stats.mp || 0;
+      bonuses.armor += stats.armor || 0;
+      bonuses.spellblock += stats.spellblock || 0;
+      bonuses.attackDamage += stats.attackDamage || 0;
+      bonuses.attackSpeed += stats.attackSpeed || 0;
+      bonuses.hpRegen += stats.hpRegen || 0;
+      bonuses.mpRegen += stats.mpRegen || 0;
+      bonuses.crit += stats.crit || 0;
+      bonuses.abilityPower += stats.abilityPower || 0;
+    });
+
+    return bonuses;
+  };
+
+  const buildBonuses = calculateBuildStats();
+
+  const hp = calculateStat(champion.stats.hp, champion.stats.hpperlevel, championLevel) + (buildBonuses.hp || 0);
+  const mp = calculateStat(champion.stats.mp, champion.stats.mpperlevel, championLevel) + (buildBonuses.mp || 0);
+  const armor = calculateStat(champion.stats.armor, champion.stats.armorperlevel, championLevel) + (buildBonuses.armor || 0);
+  const spellblock = calculateStat(champion.stats.spellblock, champion.stats.spellblockperlevel, championLevel) + (buildBonuses.spellblock || 0);
+  const attackDamage = calculateStat(champion.stats.attackdamage, champion.stats.attackdamageperlevel, championLevel) + (buildBonuses.attackDamage || 0);
+  const attackSpeed = (champion.stats.attackspeed + champion.stats.attackspeedperlevel * (championLevel - 1)) + (buildBonuses.attackSpeed || 0);
   const moveSpeed = champion.stats.movespeed;
   const attackRange = champion.stats.attackrange;
-  const hpRegen = calculateStat(champion.stats.hpregen, champion.stats.hpregenperlevel, championLevel);
-  const mpRegen = calculateStat(champion.stats.mpregen, champion.stats.mpregenperlevel, championLevel);
-  const crit = champion.stats.crit + champion.stats.critperlevel * (championLevel - 1);
-  const abilityPower = 0;
+  const hpRegen = calculateStat(champion.stats.hpregen, champion.stats.hpregenperlevel, championLevel) + (buildBonuses.hpRegen || 0);
+  const mpRegen = calculateStat(champion.stats.mpregen, champion.stats.mpregenperlevel, championLevel) + (buildBonuses.mpRegen || 0);
+  const crit = champion.stats.crit + champion.stats.critperlevel * (championLevel - 1) + (buildBonuses.crit || 0);
+  const abilityPower = 0 + (buildBonuses.abilityPower || 0);
 
   useEffect(() => {
-    const fetchInitialData = async () => {
+    const fetchChampionData = async () => {
       try {
         const versionResponse = await fetch("https://ddragon.leagueoflegends.com/api/versions.json");
         const versions = await versionResponse.json();
         setCurrentVersion(versions[0]);
-        if (token) {
-          const buildsResponse = await getBuilds(token, champion.id);
-          console.log("Builds récupérés :", buildsResponse.data); // Log
-          setSavedBuilds(buildsResponse.data);
-        }
         setLoading(false);
       } catch (err) {
-        console.error("Erreur lors de la récupération des données:", err);
+        console.error("Erreur lors de la récupération de la version:", err);
         setError(err.message);
         setLoading(false);
       }
     };
 
-    fetchInitialData();
+    const fetchBuildsData = async () => {
+      if (!token) return;
+      try {
+        const buildsResponse = await getBuilds(token, champion.id);
+        console.log("Builds récupérés :", buildsResponse.data);
+        setSavedBuilds(Array.isArray(buildsResponse.data) ? buildsResponse.data : []);
+      } catch (err) {
+        console.error("Erreur lors de la récupération des builds:", err);
+        setSavedBuilds([]);
+      }
+    };
+
+    const loadData = async () => {
+      await fetchChampionData();
+      await fetchBuildsData();
+    };
+
+    loadData();
   }, [champion.id, token]);
 
   const refreshBuilds = async () => {
+    if (!token) return;
     try {
-      if (token) {
-        const buildsResponse = await getBuilds(token, champion.id);
-        setSavedBuilds(buildsResponse.data);
-      }
+      const buildsResponse = await getBuilds(token, champion.id);
+      setSavedBuilds(Array.isArray(buildsResponse.data) ? buildsResponse.data : []);
     } catch (err) {
       console.error("Erreur lors du rafraîchissement des builds:", err);
-      setError(err.message);
+      setSavedBuilds([]);
     }
   };
 
@@ -85,12 +140,12 @@ const ChampionDetailScreen = ({ route }) => {
   };
 
   const handleDeleteBuild = async (buildId) => {
-    console.log("Début de handleDeleteBuild, buildId :", buildId, "token :", token); // Log
+    console.log("Début de handleDeleteBuild", { buildId, token });
     if (!token) {
       Alert.alert("Erreur", "Vous devez être connecté pour supprimer un build.");
       return;
     }
-
+  
     Alert.alert(
       "Confirmation",
       "Voulez-vous vraiment supprimer ce build ?",
@@ -101,14 +156,22 @@ const ChampionDetailScreen = ({ route }) => {
           style: "destructive",
           onPress: async () => {
             try {
-              console.log("Tentative de suppression, buildId :", buildId); // Log
+              console.log("Envoi de la requête DELETE", { buildId, token });
               const response = await deleteBuild(token, buildId);
-              console.log("Réponse de deleteBuild :", response.data); // Log
+              console.log("Réponse de deleteBuild", { status: response.status, data: response.data });
               await refreshBuilds();
+              if (selectedBuildId === buildId) setSelectedBuildId(null);
+              console.log("Builds rafraîchis après suppression");
               Alert.alert("Succès", "Build supprimé avec succès.");
             } catch (err) {
-              console.error("Erreur lors de la suppression :", err.response?.data || err.message); // Log détaillé
-              Alert.alert("Erreur", `Impossible de supprimer le build : ${err.response?.data?.error || err.message}`);
+              console.error("Erreur lors de la suppression", {
+                message: err.message,
+                response: err.response ? { status: err.response.status, data: err.response.data } : "Pas de réponse",
+              });
+              Alert.alert(
+                "Erreur",
+                `Impossible de supprimer le build: ${err.response?.data?.error || err.message}`
+              );
             }
           },
         },
@@ -116,40 +179,40 @@ const ChampionDetailScreen = ({ route }) => {
     );
   };
 
-  if (loading) {
+  const toggleBuildSelection = (buildId) => {
+    setSelectedBuildId(selectedBuildId === buildId ? null : buildId);
+  };
+
+  const renderStats = () => {
+    const baseHp = calculateStat(champion.stats.hp, champion.stats.hpperlevel, championLevel);
+    const baseMp = calculateStat(champion.stats.mp, champion.stats.mpperlevel, championLevel);
+    const baseArmor = calculateStat(champion.stats.armor, champion.stats.armorperlevel, championLevel);
+    const baseSpellblock = calculateStat(champion.stats.spellblock, champion.stats.spellblockperlevel, championLevel);
+    const baseAttackDamage = calculateStat(champion.stats.attackdamage, champion.stats.attackdamageperlevel, championLevel);
+    const baseAttackSpeed = champion.stats.attackspeed + champion.stats.attackspeedperlevel * (championLevel - 1);
+    const baseHpRegen = calculateStat(champion.stats.hpregen, champion.stats.hpregenperlevel, championLevel);
+    const baseMpRegen = calculateStat(champion.stats.mpregen, champion.stats.mpregenperlevel, championLevel);
+    const baseCrit = champion.stats.crit + champion.stats.critperlevel * (championLevel - 1);
+
     return (
-      <View style={styles.container}>
-        <Text style={styles.loadingText}>Chargement...</Text>
+      <View style={styles.statsContainer}>
+        <View style={styles.statsGrid}>
+          <View style={styles.statItem}><Text style={styles.statText}>HP: {hp}{buildBonuses.hp ? ` (${buildBonuses.hp} d'items)` : ''}</Text></View>
+          <View style={styles.statItem}><Text style={styles.statText}>MP: {mp}{buildBonuses.mp ? ` (${buildBonuses.mp} d'items)` : ''}</Text></View>
+          <View style={styles.statItem}><Text style={styles.statText}>Armor: {armor}{buildBonuses.armor ? ` (${buildBonuses.armor} d'items)` : ''}</Text></View>
+          <View style={styles.statItem}><Text style={styles.statText}>MR: {spellblock}{buildBonuses.spellblock ? ` (${buildBonuses.spellblock} d'items)` : ''}</Text></View>
+          <View style={styles.statItem}><Text style={styles.statText}>AD: {attackDamage}{buildBonuses.attackDamage ? ` (${buildBonuses.attackDamage} d'items)` : ''}</Text></View>
+          <View style={styles.statItem}><Text style={styles.statText}>AS: {attackSpeed.toFixed(2)}{buildBonuses.attackSpeed ? ` (${buildBonuses.attackSpeed.toFixed(2)} d'items)` : ''}</Text></View>
+          <View style={styles.statItem}><Text style={styles.statText}>Move Speed: {moveSpeed}</Text></View>
+          <View style={styles.statItem}><Text style={styles.statText}>Range: {attackRange}</Text></View>
+          <View style={styles.statItem}><Text style={styles.statText}>HP Regen: {hpRegen}{buildBonuses.hpRegen ? ` (${buildBonuses.hpRegen} d'items)` : ''}</Text></View>
+          <View style={styles.statItem}><Text style={styles.statText}>MP Regen: {mpRegen}{buildBonuses.mpRegen ? ` (${buildBonuses.mpRegen} d'items)` : ''}</Text></View>
+          <View style={styles.statItem}><Text style={styles.statText}>Crit: {crit}%{buildBonuses.crit ? ` (${buildBonuses.crit} d'items)` : ''}</Text></View>
+          <View style={styles.statItem}><Text style={styles.statText}>AP: {abilityPower}{buildBonuses.abilityPower ? ` (${buildBonuses.abilityPower} d'items)` : ''}</Text></View>
+        </View>
       </View>
     );
-  }
-
-  if (error) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>Erreur: {error}</Text>
-      </View>
-    );
-  }
-
-  const renderStats = () => (
-    <View style={styles.statsContainer}>
-      <View style={styles.statsGrid}>
-        <View style={styles.statItem}><Text style={styles.statText}>HP: {hp}</Text></View>
-        <View style={styles.statItem}><Text style={styles.statText}>MP: {mp}</Text></View>
-        <View style={styles.statItem}><Text style={styles.statText}>Armor: {armor}</Text></View>
-        <View style={styles.statItem}><Text style={styles.statText}>MR: {spellblock}</Text></View>
-        <View style={styles.statItem}><Text style={styles.statText}>AD: {attackDamage}</Text></View>
-        <View style={styles.statItem}><Text style={styles.statText}>AS: {attackSpeed.toFixed(2)}</Text></View>
-        <View style={styles.statItem}><Text style={styles.statText}>Move Speed: {moveSpeed}</Text></View>
-        <View style={styles.statItem}><Text style={styles.statText}>Range: {attackRange}</Text></View>
-        <View style={styles.statItem}><Text style={styles.statText}>HP Regen: {hpRegen}</Text></View>
-        <View style={styles.statItem}><Text style={styles.statText}>MP Regen: {mpRegen}</Text></View>
-        <View style={styles.statItem}><Text style={styles.statText}>Crit: {crit}%</Text></View>
-        <View style={styles.statItem}><Text style={styles.statText}>AP: {abilityPower}</Text></View>
-      </View>
-    </View>
-  );
+  };
 
   const renderLevelControl = () => (
     <View style={styles.levelContainer}>
@@ -185,60 +248,86 @@ const ChampionDetailScreen = ({ route }) => {
   );
 
   const renderSpells = () => (
-    champion.spells.map((spell, index) => (
-      <View key={index} style={styles.spellContainer}>
-        <Text style={styles.spellName}>{['Q', 'W', 'E', 'R'][index]} - {spell.name}</Text>
-        <Image
-          source={{ uri: `https://ddragon.leagueoflegends.com/cdn/${currentVersion}/img/spell/${spell.image.full}` }}
-          style={styles.spellIcon}
-        />
-        <Text style={styles.spellDescription}>{spell.description}</Text>
-      </View>
-    ))
+    Array.isArray(champion.spells) ? (
+      champion.spells.map((spell, index) => (
+        <View key={index} style={styles.spellContainer}>
+          <Text style={styles.spellName}>{['Q', 'W', 'E', 'R'][index]} - {spell.name}</Text>
+          <Image
+            source={{ uri: `https://ddragon.leagueoflegends.com/cdn/${currentVersion}/img/spell/${spell.image.full}` }}
+            style={styles.spellIcon}
+          />
+          <Text style={styles.spellDescription}>{spell.description}</Text>
+        </View>
+      ))
+    ) : (
+      <Text style={styles.errorText}>Aucun sort disponible</Text>
+    )
   );
 
   const renderBuilds = () => (
     <View style={styles.buildsContainer}>
       <Text style={styles.subTitle}>Vos builds :</Text>
-      {savedBuilds.map((build, index) => (
-        <View key={build.id} style={styles.buildContainer}>
-          <Text style={styles.buildTitle}>Build #{index + 1}</Text>
-          <View style={styles.buildItemsContainer}>
-            {JSON.parse(build.items).map((itemId, idx) => (
-              <Image
-                key={idx}
-                source={{ uri: `https://ddragon.leagueoflegends.com/cdn/${currentVersion}/img/item/${itemId}.png` }}
-                style={styles.buildItemImage}
-              />
-            ))}
+      {savedBuilds.length > 0 ? (
+        savedBuilds.map((build, index) => (
+          <View key={build.id} style={styles.buildContainer}>
+            <View style={styles.buildHeader}>
+              <Text style={styles.buildTitle}>Build #{index + 1}</Text>
+              <Pressable 
+                style={styles.checkboxContainer} 
+                onPress={() => toggleBuildSelection(build.id)}
+              >
+                <View style={[
+                  styles.checkbox,
+                  selectedBuildId === build.id && styles.checkboxChecked
+                ]}>
+                  {selectedBuildId === build.id && <View style={styles.checkboxInner} />}
+                </View>
+                {selectedBuildId === build.id && <Text style={styles.selectedText}>(Sélectionné)</Text>}
+              </Pressable>
+            </View>
+            <View style={styles.buildItemsContainer}>
+              {Array.isArray(JSON.parse(build.items)) ? (
+                JSON.parse(build.items).map((itemId, idx) => (
+                  <Image
+                    key={idx}
+                    source={{ uri: `https://ddragon.leagueoflegends.com/cdn/${currentVersion}/img/item/${itemId}.png` }}
+                    style={styles.buildItemImage}
+                  />
+                ))
+              ) : (
+                <Text style={styles.errorText}>Items invalides</Text>
+              )}
+            </View>
+            <View style={styles.buildButtonsContainer}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.editButton,
+                  { backgroundColor: pressed ? "#e6b800" : "#ffcc00" }
+                ]}
+                onPress={() => navigation.navigate("ItemSelectionScreen", { 
+                  championId: champion.id, 
+                  buildId: build.id, 
+                  initialItems: JSON.parse(build.items),
+                  onSaveBuild: (newItems) => handleEditBuild(build.id, newItems)
+                })}
+              >
+                <Text style={styles.editButtonText}>Modifier</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.deleteButton,
+                  { backgroundColor: pressed ? "#cc0000" : "#ff4444" }
+                ]}
+                onPress={() => handleDeleteBuild(build.id)}
+              >
+                <Text style={styles.deleteButtonText}>Supprimer</Text>
+              </Pressable>
+            </View>
           </View>
-          <View style={styles.buildButtonsContainer}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.editButton,
-                { backgroundColor: pressed ? "#e6b800" : "#ffcc00" }
-              ]}
-              onPress={() => navigation.navigate("ItemSelectionScreen", { 
-                championId: champion.id, 
-                buildId: build.id, 
-                initialItems: JSON.parse(build.items),
-                onSaveBuild: (newItems) => handleEditBuild(build.id, newItems)
-              })}
-            >
-              <Text style={styles.editButtonText}>Modifier</Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [
-                styles.deleteButton,
-                { backgroundColor: pressed ? "#cc0000" : "#ff4444" }
-              ]}
-              onPress={() => handleDeleteBuild(build.id)}
-            >
-              <Text style={styles.deleteButtonText}>Supprimer</Text>
-            </Pressable>
-          </View>
-        </View>
-      ))}
+        ))
+      ) : (
+        <Text style={styles.errorText}>Aucun build disponible</Text>
+      )}
       <Pressable
         style={({ pressed }) => [
           styles.addButton,
@@ -275,7 +364,7 @@ const ChampionDetailScreen = ({ route }) => {
   );
 };
 
-// Styles inchangés
+// Styles mis à jour
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -394,11 +483,46 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#ffcc00",
   },
+  buildHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 5,
+  },
+  checkboxContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#ffcc00",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "transparent",
+  },
+  checkboxChecked: {
+    borderWidth: 3,
+    backgroundColor: "rgba(255, 204, 0, 0.2)", // Fond léger pour effet moderne
+  },
+  checkboxInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#ffcc00",
+  },
+  selectedText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: "#ffcc00",
+    fontWeight: "bold",
+  },
   buildTitle: {
     fontSize: 18,
     fontWeight: "bold",
     color: "#ffcc00",
-    marginBottom: 10,
   },
   buildItemsContainer: {
     flexDirection: "row",

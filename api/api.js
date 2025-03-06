@@ -32,9 +32,19 @@ export const updateBuild = async (token, buildId, items, runes = "") => {
   );
 };
 
-// api.js
 export const deleteBuild = async (token, buildId) => {
-  return axios.delete(`${API_URL}/builds/${buildId}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  console.log("Préparation de la requête DELETE", { buildId, token });
+  try {
+    const response = await axios.delete(`${API_URL}/builds/${buildId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    console.log("Réponse reçue de DELETE", response.data);
+    return response;
+  } catch (error) {
+    console.error("Erreur dans deleteBuild", {
+      message: error.message,
+      response: error.response?.data,
+    });
+    throw error; 
+  }
 };

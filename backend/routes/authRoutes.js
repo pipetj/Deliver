@@ -1,4 +1,3 @@
-// authroute.js
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -13,7 +12,8 @@ const verifyToken = (req, res, next) => {
   const token = req.headers["authorization"];
   if (!token) return res.status(403).json({ error: "Accès refusé" });
 
-  jwt.verify(token.split(" ")[1], SECRET_KEY, (err, decoded) => {
+  const actualToken = token.startsWith("Bearer ") ? token.split(" ")[1] : token;
+  jwt.verify(actualToken, SECRET_KEY, (err, decoded) => {
     if (err) return res.status(401).json({ error: "Token invalide" });
     req.userId = decoded.userId;
     next();
@@ -66,13 +66,13 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// Route protégée : Profil
+// Profil
 router.get("/profile", verifyToken, async (req, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.userId } });
   res.json(user);
 });
 
-// Nouvelle route : Créer un build
+// Créer un build
 router.post("/builds", verifyToken, async (req, res) => {
   const { champion, items, runes } = req.body;
   try {
@@ -91,7 +91,7 @@ router.post("/builds", verifyToken, async (req, res) => {
   }
 });
 
-// Nouvelle route : Récupérer les builds d’un champion pour l’utilisateur
+// Récupérer les builds d’un champion
 router.get("/builds", verifyToken, async (req, res) => {
   const { champion } = req.query;
   try {
@@ -108,57 +108,83 @@ router.get("/builds", verifyToken, async (req, res) => {
   }
 });
 
-// Mise à jour d'un build
 router.put("/builds/:id", verifyToken, async (req, res) => {
-  const { id } = req.params; // Pas de parseInt, on garde l'UUID comme chaîne
+  const { id } = req.params;
   const { items, runes } = req.body;
+  console.log("Requête PUT reçue", { buildId: id, userId: req.userId });
+
   try {
     const existingBuild = await prisma.build.findUnique({
-      where: { id }, // UUID sous forme de chaîne
+      where: { id },
     });
-    if (!existingBuild || existingBuild.userId !== req.userId) {
+    console.log("Résultat de la recherche du build", { existingBuild });
+
+    if (!existingBuild) {
+      console.log("Build non trouvé", { id });
+      return res.status(404).json({ error: "Build non trouvé" });
+    }
+
+    if (existingBuild.userId !== req.userId) {
+      console.log("Permission refusée", { userId: req.userId, buildUserId: existingBuild.userId });
       return res.status(403).json({ error: "Vous n'avez pas la permission de modifier ce build" });
     }
 
     const build = await prisma.build.update({
-      where: { id }, // UUID sous forme de chaîne
+      where: { id },
       data: {
         items,
         runes: runes || "",
       },
     });
+    console.log("Build mis à jour avec succès", { id });
     res.json({ message: "Build mis à jour", build });
   } catch (error) {
-    console.error("Erreur lors de la mise à jour du build :", error);
-    res.status(400).json({ error: "Erreur lors de la mise à jour du build" });
+    console.error("Erreur lors de la mise à jour du build", {
+      message: error.message,
+      stack: error.stack,
+    });
+    res.status(500).json({ 
+      error: "Erreur lors de la mise à jour du build",
+      details: error.message 
+    });
   }
 });
 
 // Suppression d'un build
 router.delete("/builds/:id", verifyToken, async (req, res) => {
-  const { id } = req.params; // Pas de parseInt, on garde l'UUID comme chaîne
-  console.log("Requête DELETE reçue, buildId :", id, "userId :", req.userId); // Log
+  const { id } = req.params;
+  console.log("Requête DELETE reçue", { buildId: id, userId: req.userId });
+
   try {
     const existingBuild = await prisma.build.findUnique({
-      where: { id }, // UUID sous forme de chaîne
+      where: { id },
     });
-    console.log("Build trouvé :", existingBuild); // Log
+    console.log("Résultat de la recherche du build", { existingBuild });
+
     if (!existingBuild) {
+      console.log("Build non trouvé", { id });
       return res.status(404).json({ error: "Build non trouvé" });
     }
+
     if (existingBuild.userId !== req.userId) {
+      console.log("Permission refusée", { userId: req.userId, buildUserId: existingBuild.userId });
       return res.status(403).json({ error: "Vous n'avez pas la permission de supprimer ce build" });
     }
 
     await prisma.build.delete({
-      where: { id }, 
+      where: { id },
     });
-    console.log("Build supprimé avec succès, buildId :", id); // Log
+    console.log("Build supprimé avec succès", { id });
     res.json({ message: "Build supprimé avec succès" });
   } catch (error) {
-    console.error("Erreur lors de la suppression du build :", error);
-    res.status(400).json({ error: "Erreur lors de la suppression du build" });
+    console.error("Erreur lors de la suppression du build", {
+      message: error.message,
+      stack: error.stack,
+    });
+    res.status(500).json({ 
+      error: "Erreur lors de la suppression du build",
+      details: error.message 
+    });
   }
 });
-
 module.exports = router;
