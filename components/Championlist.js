@@ -1,73 +1,71 @@
-import React, { useEffect, useState } from "react";
+// components/Championlist.js
+import React, { useEffect, useState, useContext } from "react";
 import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet, Pressable, TextInput, Dimensions } from "react-native";
 import axios from "axios";
 import { useNavigation } from "@react-navigation/native";
+import { AuthContext } from "@/context/AuthContext";
+import { addFavorite, removeFavorite, getFavorites } from "../api/api";
 
-// Définition des dimensions en dehors du composant
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
-// Calculs responsifs basés sur la taille de l'écran
-const getResponsiveSize = (size) => screenWidth * (size / 975); // Basé sur un design pour iPhone 8
-const columnCount = screenWidth > 700 ? 4 : 3; // Plus de colonnes sur grand écran
-const isMobile = screenWidth <= 600; // Condition pour détecter un petit écran
+const { width: screenWidth } = Dimensions.get('window');
+const getResponsiveSize = (size) => screenWidth * (size / 375);
+const columnCount = screenWidth > 700 ? 4 : 3;
+const isMobile = screenWidth <= 600;
 
 const ChampionsList = () => {
   const [champions, setChampions] = useState([]);
   const [filteredChampions, setFilteredChampions] = useState([]);
+  const [favorites, setFavorites] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedChampion, setSelectedChampion] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRole, setSelectedRole] = useState("");
-  const [menuOpen, setMenuOpen] = useState(false); // État pour contrôler le menu burger
-  const [version, setVersion] = useState(null); // Ajout de la variable version
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [version, setVersion] = useState(null);
   const navigation = useNavigation();
+  const { token } = useContext(AuthContext);
 
   useEffect(() => {
-    // Fonction pour récupérer la version la plus récente
     const fetchLatestVersion = async () => {
       try {
         const response = await axios.get("https://ddragon.leagueoflegends.com/api/versions.json");
-        const latestVersion = response.data[0]; // La version la plus récente est toujours en premier
-        setVersion(latestVersion); // Définir la version ici
+        setVersion(response.data[0]);
       } catch (error) {
         console.error("Erreur lors de la récupération de la version :", error);
       }
     };
-
     fetchLatestVersion();
-  }, []); // Appel au début pour récupérer la version
+  }, []);
 
   useEffect(() => {
-    if (!version) return; // Attendre que la version soit récupérée
+    if (!version || !token) return;
 
-    const fetchChampions = async () => {
+    const fetchData = async () => {
       try {
-        const response = await axios.get(
-            `https://ddragon.leagueoflegends.com/cdn/${version}/data/fr_FR/champion.json`
-        );
-        const championsData = Object.values(response.data.data);
+        const [championsResponse, favoritesResponse] = await Promise.all([
+          axios.get(`https://ddragon.leagueoflegends.com/cdn/${version}/data/fr_FR/champion.json`),
+          getFavorites(token),
+        ]);
 
-        // Récupérer les détails complets de chaque champion
+        const championsData = Object.values(championsResponse.data.data);
         const championsWithDetails = await Promise.all(
             championsData.map(async (champion) => {
-              const championDetailResponse = await axios.get(
+              const detailResponse = await axios.get(
                   `https://ddragon.leagueoflegends.com/cdn/${version}/data/fr_FR/champion/${champion.id}.json`
               );
-              return championDetailResponse.data.data[champion.id];
+              return detailResponse.data.data[champion.id];
             })
         );
 
         setChampions(championsWithDetails);
         setFilteredChampions(championsWithDetails);
+        setFavorites(favoritesResponse.data);
       } catch (error) {
-        console.error("Erreur lors de la récupération des champions :", error);
+        console.error("Erreur lors de la récupération des données :", error);
       } finally {
         setLoading(false);
       }
     };
-
-    fetchChampions();
-  }, [version]); // Recharger les champions lorsque la version change
+    fetchData();
+  }, [version, token]);
 
   useEffect(() => {
     const filtered = champions.filter(champion =>
@@ -78,23 +76,44 @@ const ChampionsList = () => {
     setFilteredChampions(filtered);
   }, [searchQuery, selectedRole, champions]);
 
+  const toggleFavorite = async (championId) => {
+    try {
+      if (favorites.includes(championId)) {
+        await removeFavorite(token, championId);
+        setFavorites(favorites.filter(id => id !== championId));
+      } else {
+        await addFavorite(token, championId);
+        setFavorites([...favorites, championId]);
+      }
+    } catch (error) {
+      console.error("Erreur lors de la mise à jour des favoris :", error);
+    }
+  };
+
   const handleChampionClick = (champion) => {
     navigation.navigate('ChampionDetail', { champion });
   };
 
   const roles = ["", "Assassin", "Fighter", "Mage", "Marksman", "Support", "Tank"];
 
-  if (loading) return <ActivityIndicator size="large" color="#0000ff" />;
+  if (loading) return <ActivityIndicator size="large" color="#fbcd03" />;
 
   return (
       <View style={styles.container}>
-        {/* Menu burger au-dessus de la liste */}
+        {/* Bouton Profil fixe en haut à droite */}
+        <Pressable
+            style={styles.profileButtonFixed}
+            onPress={() => navigation.navigate("Profile")}
+        >
+          <Text style={styles.profileButtonText}>Profil</Text>
+        </Pressable>
+
+        {/* Menu burger ou classique */}
         {isMobile ? (
             <Pressable onPress={() => setMenuOpen(!menuOpen)} style={styles.menuButton}>
               <Text style={styles.menuButtonText}>☰</Text>
             </Pressable>
         ) : (
-            // Menu classique pour grand écran
             <View style={styles.menu}>
               <Text style={styles.title}>Liste des Champions</Text>
               <TextInput
@@ -117,8 +136,6 @@ const ChampionsList = () => {
               </View>
             </View>
         )}
-
-        {/* Menu burger qui apparaît lorsque le menu burger est ouvert */}
         {menuOpen && isMobile && (
             <View style={styles.burgerMenu}>
               <Text style={styles.title}>Liste des Champions</Text>
@@ -143,26 +160,32 @@ const ChampionsList = () => {
             </View>
         )}
 
-        {/* Liste des champions */}
+        {/* Liste des champions avec marge en haut */}
         <FlatList
             data={filteredChampions}
             keyExtractor={(item) => item.id}
             numColumns={columnCount}
             renderItem={({ item }) => (
-                <Pressable
-                    onPress={() => handleChampionClick(item)}
-                    style={styles.championContainer}
-                >
-                  <Image
-                      source={{
-                        uri: `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${item.id}.png`,
-                      }}
-                      style={styles.championImage}
-                  />
-                  <Text style={styles.championName}>{item.name}</Text>
-                </Pressable>
+                <View style={styles.championContainer}>
+                  <Pressable onPress={() => handleChampionClick(item)}>
+                    <Image
+                        source={{ uri: `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${item.id}.png` }}
+                        style={styles.championImage}
+                    />
+                    <Text style={styles.championName}>{item.name}</Text>
+                  </Pressable>
+                  <Pressable
+                      style={styles.favoriteButton}
+                      onPress={() => toggleFavorite(item.id)}
+                  >
+                    <Text style={styles.favoriteText}>{favorites.includes(item.id) ? "★" : "☆"}</Text>
+                  </Pressable>
+                </View>
             )}
-            contentContainerStyle={[styles.flatListContainer, menuOpen && { marginTop: getResponsiveSize(220) }]}
+            contentContainerStyle={[
+              styles.flatListContainer,
+              { paddingTop: menuOpen ? getResponsiveSize(220) : getResponsiveSize(60) }, // Ajustement dynamique
+            ]}
             showsVerticalScrollIndicator={false}
         />
       </View>
@@ -178,21 +201,21 @@ const styles = StyleSheet.create({
   },
   menuButton: {
     position: "absolute",
-    top: 20,
-    left: 20,
-    padding: 10,
+    top: getResponsiveSize(10),
+    left: getResponsiveSize(10),
+    padding: getResponsiveSize(8),
     backgroundColor: "#fbcd03",
     borderRadius: 8,
     zIndex: 10,
   },
   menuButtonText: {
-    fontSize: 30,
+    fontSize: getResponsiveSize(24),
     color: "#1c1c1e",
   },
   title: {
     fontSize: getResponsiveSize(28),
     fontWeight: "bold",
-    color: "#fbcd03", /* Couleur principale pour le titre */
+    color: "#fbcd03",
     textAlign: "center",
     marginBottom: getResponsiveSize(20),
     marginTop: getResponsiveSize(10),
@@ -205,12 +228,22 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: getResponsiveSize(15),
   },
+  burgerMenu: {
+    position: "absolute",
+    top: getResponsiveSize(50),
+    left: 0,
+    right: 0,
+    backgroundColor: "#2c2c2e",
+    padding: getResponsiveSize(15),
+    borderRadius: 10,
+    zIndex: 10,
+  },
   searchBar: {
-    backgroundColor: "#fbcd03", /* Couleur principale pour la barre de recherche */
+    backgroundColor: "#fbcd03",
     padding: getResponsiveSize(12),
     borderRadius: 10,
     marginBottom: getResponsiveSize(15),
-    color: "#1c1c1e", /* Texte sombre */
+    color: "#1c1c1e",
     width: "90%",
     textAlign: "center",
     fontSize: getResponsiveSize(16),
@@ -266,6 +299,28 @@ const styles = StyleSheet.create({
     fontSize: getResponsiveSize(14),
     width: "100%",
     flexShrink: 1,
+  },
+  favoriteButton: {
+    marginTop: getResponsiveSize(5),
+  },
+  favoriteText: {
+    fontSize: getResponsiveSize(20),
+    color: "#fbcd03",
+  },
+  profileButtonFixed: {
+    position: "absolute",
+    top: getResponsiveSize(10),
+    right: getResponsiveSize(10),
+    backgroundColor: "#fbcd03",
+    paddingVertical: getResponsiveSize(8),
+    paddingHorizontal: getResponsiveSize(12),
+    borderRadius: 8,
+    zIndex: 10,
+  },
+  profileButtonText: {
+    color: "#1c1c1e",
+    fontSize: getResponsiveSize(14),
+    fontWeight: "bold",
   },
 });
 

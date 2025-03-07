@@ -1,3 +1,4 @@
+// authRoutes.js
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -24,8 +25,6 @@ const verifyToken = (req, res, next) => {
 router.post("/register", async (req, res) => {
   const { username, email, password } = req.body;
   try {
-    console.log('Tentative d\'inscription:', { username, email });
-
     const existingUser = await prisma.user.findFirst({
       where: { OR: [{ email }, { username }] },
     });
@@ -35,13 +34,10 @@ router.post("/register", async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    console.log('Mot de passe hashé:', hashedPassword);
-
     const user = await prisma.user.create({
       data: { username, email, password: hashedPassword },
     });
 
-    console.log('Utilisateur créé:', user);
     res.status(201).json({ message: "Utilisateur créé", user });
   } catch (error) {
     console.error('Erreur lors de l\'inscription:', error);
@@ -72,17 +68,60 @@ router.get("/profile", verifyToken, async (req, res) => {
   res.json(user);
 });
 
-// Créer un build
+// Ajouter un favori
+router.post("/favorites", verifyToken, async (req, res) => {
+  const { championId } = req.body;
+  try {
+    const favorite = await prisma.favorite.create({
+      data: {
+        userId: req.userId,
+        championId,
+      },
+    });
+    res.status(201).json({ message: "Favori ajouté", favorite });
+  } catch (error) {
+    console.error("Erreur lors de l’ajout du favori :", error);
+    res.status(400).json({ error: "Erreur lors de l’ajout du favori" });
+  }
+});
+
+// Supprimer un favori
+router.delete("/favorites/:championId", verifyToken, async (req, res) => {
+  const { championId } = req.params;
+  try {
+    const favorite = await prisma.favorite.findFirst({
+      where: { userId: req.userId, championId },
+    });
+    if (!favorite) return res.status(404).json({ error: "Favori non trouvé" });
+
+    await prisma.favorite.delete({ where: { id: favorite.id } });
+    res.json({ message: "Favori supprimé" });
+  } catch (error) {
+    console.error("Erreur lors de la suppression du favori :", error);
+    res.status(400).json({ error: "Erreur lors de la suppression du favori" });
+  }
+});
+
+// Récupérer les favoris
+router.get("/favorites", verifyToken, async (req, res) => {
+  try {
+    const favorites = await prisma.favorite.findMany({
+      where: { userId: req.userId },
+      select: { championId: true },
+    });
+    res.json(favorites.map(fav => fav.championId)); // Renvoie un tableau d’IDs
+  } catch (error) {
+    console.error("Erreur lors de la récupération des favoris :", error);
+    res.status(400).json({ error: "Erreur lors de la récupération des favoris" });
+  }
+});
+
+// Créer un build (inchangé)
 router.post("/builds", verifyToken, async (req, res) => {
   const { champion, items, runes } = req.body;
   try {
     const build = await prisma.build.create({
-      data: {
-        userId: req.userId,
-        champion,
-        items,
-        runes: runes || "",
-      },
+      data: { userId: req.userId, champion, items, runes: runes || "" },
     });
     res.status(201).json({ message: "Build créé", build });
   } catch (error) {
@@ -91,15 +130,12 @@ router.post("/builds", verifyToken, async (req, res) => {
   }
 });
 
-// Récupérer les builds d’un champion
+// Récupérer les builds d’un champion (inchangé)
 router.get("/builds", verifyToken, async (req, res) => {
   const { champion } = req.query;
   try {
     const builds = await prisma.build.findMany({
-      where: {
-        userId: req.userId,
-        champion,
-      },
+      where: { userId: req.userId, champion },
     });
     res.json(builds);
   } catch (error) {
@@ -108,83 +144,40 @@ router.get("/builds", verifyToken, async (req, res) => {
   }
 });
 
+// Mettre à jour un build (inchangé)
 router.put("/builds/:id", verifyToken, async (req, res) => {
   const { id } = req.params;
   const { items, runes } = req.body;
-  console.log("Requête PUT reçue", { buildId: id, userId: req.userId });
-
   try {
-    const existingBuild = await prisma.build.findUnique({
-      where: { id },
-    });
-    console.log("Résultat de la recherche du build", { existingBuild });
-
-    if (!existingBuild) {
-      console.log("Build non trouvé", { id });
-      return res.status(404).json({ error: "Build non trouvé" });
-    }
-
-    if (existingBuild.userId !== req.userId) {
-      console.log("Permission refusée", { userId: req.userId, buildUserId: existingBuild.userId });
-      return res.status(403).json({ error: "Vous n'avez pas la permission de modifier ce build" });
-    }
+    const existingBuild = await prisma.build.findUnique({ where: { id } });
+    if (!existingBuild) return res.status(404).json({ error: "Build non trouvé" });
+    if (existingBuild.userId !== req.userId) return res.status(403).json({ error: "Permission refusée" });
 
     const build = await prisma.build.update({
       where: { id },
-      data: {
-        items,
-        runes: runes || "",
-      },
+      data: { items, runes: runes || "" },
     });
-    console.log("Build mis à jour avec succès", { id });
     res.json({ message: "Build mis à jour", build });
   } catch (error) {
-    console.error("Erreur lors de la mise à jour du build", {
-      message: error.message,
-      stack: error.stack,
-    });
-    res.status(500).json({ 
-      error: "Erreur lors de la mise à jour du build",
-      details: error.message 
-    });
+    console.error("Erreur lors de la mise à jour du build :", error);
+    res.status(500).json({ error: "Erreur lors de la mise à jour du build" });
   }
 });
 
-// Suppression d'un build
+// Supprimer un build (inchangé)
 router.delete("/builds/:id", verifyToken, async (req, res) => {
   const { id } = req.params;
-  console.log("Requête DELETE reçue", { buildId: id, userId: req.userId });
-
   try {
-    const existingBuild = await prisma.build.findUnique({
-      where: { id },
-    });
-    console.log("Résultat de la recherche du build", { existingBuild });
+    const existingBuild = await prisma.build.findUnique({ where: { id } });
+    if (!existingBuild) return res.status(404).json({ error: "Build non trouvé" });
+    if (existingBuild.userId !== req.userId) return res.status(403).json({ error: "Permission refusée" });
 
-    if (!existingBuild) {
-      console.log("Build non trouvé", { id });
-      return res.status(404).json({ error: "Build non trouvé" });
-    }
-
-    if (existingBuild.userId !== req.userId) {
-      console.log("Permission refusée", { userId: req.userId, buildUserId: existingBuild.userId });
-      return res.status(403).json({ error: "Vous n'avez pas la permission de supprimer ce build" });
-    }
-
-    await prisma.build.delete({
-      where: { id },
-    });
-    console.log("Build supprimé avec succès", { id });
+    await prisma.build.delete({ where: { id } });
     res.json({ message: "Build supprimé avec succès" });
   } catch (error) {
-    console.error("Erreur lors de la suppression du build", {
-      message: error.message,
-      stack: error.stack,
-    });
-    res.status(500).json({ 
-      error: "Erreur lors de la suppression du build",
-      details: error.message 
-    });
+    console.error("Erreur lors de la suppression du build :", error);
+    res.status(500).json({ error: "Erreur lors de la suppression du build" });
   }
 });
+
 module.exports = router;

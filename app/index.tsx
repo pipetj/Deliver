@@ -8,6 +8,7 @@ import ChampionDetailScreen from '@/components/ChampionDetail';
 import ItemSelectionScreen from '@/screens/ItemSelectionScreen';
 import LoginScreen from '@/screens/LoginScreen';
 import RegisterScreen from '@/screens/RegisterScreen';
+import ProfileScreen from '@/screens/ProfileScreen'; // Nouvelle importation
 
 // Définir les types pour les paramètres de navigation
 export type RootStackParamList = {
@@ -16,6 +17,7 @@ export type RootStackParamList = {
     Champions: undefined;
     ChampionDetail: { champion: any };
     ItemSelectionScreen: undefined;
+    Profile: undefined; // Ajout du type pour Profile
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -62,6 +64,11 @@ export default function App() {
                     name="ItemSelectionScreen"
                     component={ItemSelectionScreen}
                     options={{ title: "Sélection d'objets" }}
+                />
+                <Stack.Screen
+                    name="Profile"
+                    component={ProfileScreen}
+                    options={{ title: 'Profil', headerShown: false }} // Ajout de la route Profile
                 />
             </Stack.Navigator>
         </AuthProvider>

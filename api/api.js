@@ -18,6 +18,23 @@ export const createBuild = async (token, champion, items, runes = "") => {
   );
 };
 
+export const addFavorite = (token, championId) =>
+    axios.post(
+        `${API_URL}/favorites`,
+        { championId },
+        { headers: { Authorization: `Bearer ${token}` } }
+    );
+
+export const removeFavorite = (token, championId) =>
+    axios.delete(`${API_URL}/favorites/${championId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+export const getFavorites = (token) =>
+    axios.get(`${API_URL}/favorites`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
 export const getBuilds = async (token, champion) => {
   return axios.get(`${API_URL}/builds?champion=${champion}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -45,6 +62,6 @@ export const deleteBuild = async (token, buildId) => {
       message: error.message,
       response: error.response?.data,
     });
-    throw error; 
+    throw error;
   }
 };
