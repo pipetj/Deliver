@@ -13,8 +13,8 @@ import {
   SafeAreaView,
   Animated,
 } from "react-native";
-import { AuthContext } from "../context/AuthContext";
-import { createBuild, updateBuild } from "../api/api";
+import { AuthContext } from "@/context/AuthContext";
+import { createBuild, updateBuild } from "@/api/api";
 
 // Types
 interface Item {

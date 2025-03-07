@@ -1,7 +1,14 @@
+// context/AuthContext.js
 import React, { createContext, useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-export const AuthContext = createContext();
+// On fournit un objet par défaut pour éviter qu'il soit undefined
+export const AuthContext = createContext({
+  user: null,
+  token: null,
+  login: () => {},
+  logout: () => {},
+});
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -12,7 +19,7 @@ export const AuthProvider = ({ children }) => {
       const storedToken = await AsyncStorage.getItem("token");
       if (storedToken) {
         setToken(storedToken);
-        // Vous pouvez aussi récupérer les infos utilisateur ici si nécessaire
+        // Vous pouvez également récupérer d'autres informations utilisateur ici si nécessaire
       }
     };
     loadUser();
@@ -31,8 +38,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout }}>
-      {children}
-    </AuthContext.Provider>
+      <AuthContext.Provider value={{ user, token, login, logout }}>
+        {children}
+      </AuthContext.Provider>
   );
 };
