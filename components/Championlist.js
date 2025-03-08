@@ -1,48 +1,71 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet, TouchableOpacity, Modal, TextInput } from "react-native";
+// components/Championlist.js
+import React, { useEffect, useState, useContext } from "react";
+import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet, Pressable, TextInput, Dimensions } from "react-native";
 import axios from "axios";
 import { useNavigation } from "@react-navigation/native";
+import { AuthContext } from "@/context/AuthContext";
+import { addFavorite, removeFavorite, getFavorites } from "../api/api";
+
+const { width: screenWidth } = Dimensions.get('window');
+const getResponsiveSize = (size) => screenWidth * (size / 375);
+const columnCount = screenWidth > 700 ? 4 : 3;
+const isMobile = screenWidth <= 600;
 
 const ChampionsList = () => {
   const [champions, setChampions] = useState([]);
   const [filteredChampions, setFilteredChampions] = useState([]);
+  const [favorites, setFavorites] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedChampion, setSelectedChampion] = useState(null);
-  const [modalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRole, setSelectedRole] = useState("");
-  const version = "15.3.1";
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [version, setVersion] = useState(null);
   const navigation = useNavigation();
+  const { token } = useContext(AuthContext);
 
   useEffect(() => {
-    const fetchChampions = async () => {
+    const fetchLatestVersion = async () => {
       try {
-        const response = await axios.get(
-            `https://ddragon.leagueoflegends.com/cdn/${version}/data/fr_FR/champion.json`
-        );
-        const championsData = Object.values(response.data.data);
+        const response = await axios.get("https://ddragon.leagueoflegends.com/api/versions.json");
+        setVersion(response.data[0]);
+      } catch (error) {
+        console.error("Erreur lors de la récupération de la version :", error);
+      }
+    };
+    fetchLatestVersion();
+  }, []);
 
-        // Récupérer les détails complets de chaque champion
+  useEffect(() => {
+    if (!version || !token) return;
+
+    const fetchData = async () => {
+      try {
+        const [championsResponse, favoritesResponse] = await Promise.all([
+          axios.get(`https://ddragon.leagueoflegends.com/cdn/${version}/data/fr_FR/champion.json`),
+          getFavorites(token),
+        ]);
+
+        const championsData = Object.values(championsResponse.data.data);
         const championsWithDetails = await Promise.all(
             championsData.map(async (champion) => {
-              const championDetailResponse = await axios.get(
+              const detailResponse = await axios.get(
                   `https://ddragon.leagueoflegends.com/cdn/${version}/data/fr_FR/champion/${champion.id}.json`
               );
-              return championDetailResponse.data.data[champion.id];
+              return detailResponse.data.data[champion.id];
             })
         );
 
         setChampions(championsWithDetails);
         setFilteredChampions(championsWithDetails);
+        setFavorites(favoritesResponse.data);
       } catch (error) {
-        console.error("Erreur lors de la récupération des champions :", error);
+        console.error("Erreur lors de la récupération des données :", error);
       } finally {
         setLoading(false);
       }
     };
-
-    fetchChampions();
-  }, []);
+    fetchData();
+  }, [version, token]);
 
   useEffect(() => {
     const filtered = champions.filter(champion =>
@@ -53,90 +76,118 @@ const ChampionsList = () => {
     setFilteredChampions(filtered);
   }, [searchQuery, selectedRole, champions]);
 
+  const toggleFavorite = async (championId) => {
+    try {
+      if (favorites.includes(championId)) {
+        await removeFavorite(token, championId);
+        setFavorites(favorites.filter(id => id !== championId));
+      } else {
+        await addFavorite(token, championId);
+        setFavorites([...favorites, championId]);
+      }
+    } catch (error) {
+      console.error("Erreur lors de la mise à jour des favoris :", error);
+    }
+  };
+
   const handleChampionClick = (champion) => {
     navigation.navigate('ChampionDetail', { champion });
   };
 
-  const handleChampionNavigation = (champion) => {
-    navigation.navigate("ChampionDetail", { champion });
-  };
-
   const roles = ["", "Assassin", "Fighter", "Mage", "Marksman", "Support", "Tank"];
 
-  if (loading) return <ActivityIndicator size="large" color="#0000ff" />;
+  if (loading) return <ActivityIndicator size="large" color="#fbcd03" />;
 
   return (
       <View style={styles.container}>
-        <Text style={styles.title}>Liste des Champions</Text>
-        <TextInput
-            style={styles.searchBar}
-            placeholder="Rechercher un champion..."
-            placeholderTextColor="#888"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-        />
-        <View style={styles.roleContainer}>
-          {roles.map(role => (
-              <TouchableOpacity
-                  key={role}
-                  style={[styles.roleButton, selectedRole === role && styles.selectedRole]}
-                  onPress={() => setSelectedRole(role)}
-              >
-                <Text style={styles.roleText}>{role || "Tous"}</Text>
-              </TouchableOpacity>
-          ))}
-        </View>
+        {/* Bouton Profil fixe en haut à droite */}
+        <Pressable
+            style={styles.profileButtonFixed}
+            onPress={() => navigation.navigate("Profile")}
+        >
+          <Text style={styles.profileButtonText}>Profil</Text>
+        </Pressable>
+
+        {/* Menu burger ou classique */}
+        {isMobile ? (
+            <Pressable onPress={() => setMenuOpen(!menuOpen)} style={styles.menuButton}>
+              <Text style={styles.menuButtonText}>☰</Text>
+            </Pressable>
+        ) : (
+            <View style={styles.menu}>
+              <Text style={styles.title}>Liste des Champions</Text>
+              <TextInput
+                  style={styles.searchBar}
+                  placeholder="Rechercher un champion..."
+                  placeholderTextColor="#888"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+              />
+              <View style={styles.roleContainer}>
+                {roles.map(role => (
+                    <Pressable
+                        key={role}
+                        style={[styles.roleButton, selectedRole === role && styles.selectedRole]}
+                        onPress={() => setSelectedRole(role)}
+                    >
+                      <Text style={styles.roleText}>{role || "Tous"}</Text>
+                    </Pressable>
+                ))}
+              </View>
+            </View>
+        )}
+        {menuOpen && isMobile && (
+            <View style={styles.burgerMenu}>
+              <Text style={styles.title}>Liste des Champions</Text>
+              <TextInput
+                  style={styles.searchBar}
+                  placeholder="Rechercher un champion..."
+                  placeholderTextColor="#888"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+              />
+              <View style={styles.roleContainer}>
+                {roles.map(role => (
+                    <Pressable
+                        key={role}
+                        style={[styles.roleButton, selectedRole === role && styles.selectedRole]}
+                        onPress={() => setSelectedRole(role)}
+                    >
+                      <Text style={styles.roleText}>{role || "Tous"}</Text>
+                    </Pressable>
+                ))}
+              </View>
+            </View>
+        )}
+
+        {/* Liste des champions avec marge en haut */}
         <FlatList
             data={filteredChampions}
             keyExtractor={(item) => item.id}
-            numColumns={3}
+            numColumns={columnCount}
             renderItem={({ item }) => (
-                <TouchableOpacity
-                    onPress={() => handleChampionClick(item)}
-                    onLongPress={() => handleChampionNavigation(item)}
-                    style={styles.championContainer}
-                >
-                  <Image
-                      source={{
-                        uri: `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${item.id}.png`,
-                      }}
-                      style={styles.championImage}
-                  />
-                  <Text style={styles.championName}>{item.name}</Text>
-                </TouchableOpacity>
+                <View style={styles.championContainer}>
+                  <Pressable onPress={() => handleChampionClick(item)}>
+                    <Image
+                        source={{ uri: `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${item.id}.png` }}
+                        style={styles.championImage}
+                    />
+                    <Text style={styles.championName}>{item.name}</Text>
+                  </Pressable>
+                  <Pressable
+                      style={styles.favoriteButton}
+                      onPress={() => toggleFavorite(item.id)}
+                  >
+                    <Text style={styles.favoriteText}>{favorites.includes(item.id) ? "★" : "☆"}</Text>
+                  </Pressable>
+                </View>
             )}
+            contentContainerStyle={[
+              styles.flatListContainer,
+              { paddingTop: menuOpen ? getResponsiveSize(220) : getResponsiveSize(60) }, // Ajustement dynamique
+            ]}
+            showsVerticalScrollIndicator={false}
         />
-        <Modal
-            visible={modalVisible}
-            animationType="slide"
-            transparent={true}
-            onRequestClose={() => setModalVisible(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              {selectedChampion && (
-                  <>
-                    <Text style={styles.modalTitle}>{selectedChampion.name}</Text>
-                    <Text style={styles.modalText}>Role: {selectedChampion.tags.join(", ")}</Text>
-                    <Text style={styles.modalText}>Description: {selectedChampion.blurb}</Text>
-                    <Text style={styles.modalText}>Sorts:</Text>
-                    {Array.isArray(selectedChampion.spells) && selectedChampion.spells.length > 0 ? (
-                        selectedChampion.spells.map((spell, index) => (
-                            <View key={index} style={styles.spellContainer}>
-                              <Text style={styles.modalText}>- {spell.name}: {spell.description}</Text>
-                            </View>
-                        ))
-                    ) : (
-                        <Text style={styles.modalText}>Aucun sort disponible</Text>
-                    )}
-                  </>
-              )}
-              <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
-                <Text style={styles.closeButtonText}>Fermer</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
       </View>
   );
 };
@@ -144,84 +195,131 @@ const ChampionsList = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#121212",
-    padding: 10,
+    backgroundColor: "#1c1c1e",
+    padding: getResponsiveSize(1),
+    alignItems: "center",
+  },
+  menuButton: {
+    position: "absolute",
+    top: getResponsiveSize(10),
+    left: getResponsiveSize(10),
+    padding: getResponsiveSize(8),
+    backgroundColor: "#fbcd03",
+    borderRadius: 8,
+    zIndex: 10,
+  },
+  menuButtonText: {
+    fontSize: getResponsiveSize(24),
+    color: "#1c1c1e",
   },
   title: {
-    fontSize: 24,
+    fontSize: getResponsiveSize(28),
     fontWeight: "bold",
-    color: "#fff",
+    color: "#fbcd03",
     textAlign: "center",
-    marginBottom: 10,
+    marginBottom: getResponsiveSize(20),
+    marginTop: getResponsiveSize(10),
+  },
+  menu: {
+    backgroundColor: "#2c2c2e",
+    width: '100%',
+    height: getResponsiveSize(190),
+    padding: getResponsiveSize(15),
+    borderRadius: 10,
+    marginBottom: getResponsiveSize(15),
+  },
+  burgerMenu: {
+    position: "absolute",
+    top: getResponsiveSize(50),
+    left: 0,
+    right: 0,
+    backgroundColor: "#2c2c2e",
+    padding: getResponsiveSize(15),
+    borderRadius: 10,
+    zIndex: 10,
   },
   searchBar: {
-    backgroundColor: "#fff",
-    padding: 10,
-    borderRadius: 5,
-    marginBottom: 10,
-    color: "#000",
+    backgroundColor: "#fbcd03",
+    padding: getResponsiveSize(12),
+    borderRadius: 10,
+    marginBottom: getResponsiveSize(15),
+    color: "#1c1c1e",
+    width: "90%",
+    textAlign: "center",
+    fontSize: getResponsiveSize(16),
   },
   roleContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
-    marginBottom: 10,
+    marginBottom: getResponsiveSize(20),
   },
   roleButton: {
-    backgroundColor: "#333",
-    padding: 8,
-    borderRadius: 5,
-    margin: 5,
+    backgroundColor: "#444",
+    paddingVertical: getResponsiveSize(10),
+    paddingHorizontal: getResponsiveSize(15),
+    borderRadius: 8,
+    margin: getResponsiveSize(5),
   },
   selectedRole: {
-    backgroundColor: "#1D3D47",
+    backgroundColor: "#fbcd03",
   },
   roleText: {
     color: "#fff",
+    fontWeight: "bold",
+    fontSize: getResponsiveSize(14),
+  },
+  flatListContainer: {
+    paddingBottom: getResponsiveSize(20),
+    alignItems: 'center',
   },
   championContainer: {
     alignItems: "center",
-    margin: 10,
+    margin: screenWidth * 0.02,
+    backgroundColor: "#2c2c2e",
+    padding: screenWidth * 0.03,
+    borderRadius: 15,
+    width: screenWidth / columnCount - (screenWidth * 0.06),
+    elevation: 5,
+    shadowColor: "#fbcd03",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 3.25,
+    shadowRadius: 3.84,
   },
   championImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 10,
+    width: screenWidth / columnCount - (screenWidth * 0.12),
+    height: screenWidth / columnCount - (screenWidth * 0.12),
+    borderRadius: 12,
   },
   championName: {
-    color: "#fff",
-    marginTop: 5,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
-  },
-  modalContent: {
-    backgroundColor: "#fff",
-    padding: 20,
-    borderRadius: 10,
-    width: "80%",
-  },
-  modalTitle: {
-    fontSize: 24,
+    color: "#fbcd03",
+    marginTop: getResponsiveSize(12),
     fontWeight: "bold",
-    marginBottom: 10,
-  },
-  modalText: {
-    fontSize: 16,
-    marginBottom: 10,
-  },
-  closeButton: {
-    backgroundColor: "#1D3D47",
-    padding: 10,
-    borderRadius: 5,
-    marginTop: 20,
-  },
-  closeButtonText: {
-    color: "#fff",
     textAlign: "center",
+    fontSize: getResponsiveSize(14),
+    width: "100%",
+    flexShrink: 1,
+  },
+  favoriteButton: {
+    marginTop: getResponsiveSize(5),
+  },
+  favoriteText: {
+    fontSize: getResponsiveSize(20),
+    color: "#fbcd03",
+  },
+  profileButtonFixed: {
+    position: "absolute",
+    top: getResponsiveSize(10),
+    right: getResponsiveSize(10),
+    backgroundColor: "#fbcd03",
+    paddingVertical: getResponsiveSize(8),
+    paddingHorizontal: getResponsiveSize(12),
+    borderRadius: 8,
+    zIndex: 10,
+  },
+  profileButtonText: {
+    color: "#1c1c1e",
+    fontSize: getResponsiveSize(14),
     fontWeight: "bold",
   },
 });
