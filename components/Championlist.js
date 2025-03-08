@@ -28,7 +28,7 @@ const ChampionsList = () => {
       try {
         const response = await axios.get("https://ddragon.leagueoflegends.com/api/versions.json");
         const latestVersion = response.data[0]; // La version la plus récente est toujours en premier
-        setVersion(latestVersion); // Définir la version ici
+        setVersion(latestVersion); 
       } catch (error) {
         console.error("Erreur lors de la récupération de la version :", error);
       }
