@@ -16,7 +16,7 @@ import {
 import { AuthContext } from "@/context/AuthContext";
 import { createBuild, updateBuild } from "@/api/api";
 
-// Types
+// Interface pour définir la structure d'un item
 interface Item {
   id: string;
   name: string;
@@ -34,22 +34,24 @@ interface Item {
   rarity?: string;
 }
 
+// Interface pour les props du composant
 interface Props {
   navigation: any;
   route: {
     params?: {
-      championId?: string;
-      buildId?: string;
-      initialItems?: string[];
-      onSaveBuild?: (items: string[]) => void;
+      championId?: string; // ID du champion pour le build
+      buildId?: string; // ID du build existant (pour modification)
+      initialItems?: string[]; // Liste d'items initiaux
+      onSaveBuild?: (items: string[]) => void; // Callback pour sauvegarder le build
     };
   };
 }
 
-// Constantes
-const MAX_ITEMS = 6;
-const EXCLUDED_ITEMS = ["3070", "3040"];
+// Constantes globales
+const MAX_ITEMS = 6; // Nombre maximum d'items dans un build
+const EXCLUDED_ITEMS = ["3070", "3040"]; // Items exclus 
 const CATEGORIES = [
+  // Liste des catégories d'items avec leurs noms, couleurs et icônes
   { name: "Attaque Physique", color: "#FF4444", icon: "⚔️" },
   { name: "Magie", color: "#9370DB", icon: "✨" },
   { name: "Défensif/AD", color: "#FF8C00", icon: "🛡️⚔️" },
@@ -59,27 +61,32 @@ const CATEGORIES = [
   { name: "Bottes", color: "#8A2BE2", icon: "👢" },
   { name: "Consommables", color: "#32CD32", icon: "🍷" },
 ];
-const RARITY_ORDER = ["LEGENDARY", "EPIC", "BASIC", "STARTER"];
+const RARITY_ORDER = ["LEGENDARY", "EPIC", "BASIC", "STARTER"]; // Ordre de priorité des raretés
 
+// Composant principal pour la sélection des items
 const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
+  // Extraction des paramètres de la route
   const { championId, onSaveBuild, buildId, initialItems } = route.params || {};
-  const { token } = useContext(AuthContext);
-  const [items, setItems] = useState<Item[]>([]);
-  const [filteredItems, setFilteredItems] = useState<Item[]>([]);
-  const [currentVersion, setCurrentVersion] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [categories] = useState(CATEGORIES);
-  const [selectedItem, setSelectedItem] = useState<Item | null>(null);
-  const [addedItems, setAddedItems] = useState<string[]>(initialItems || []);
-  const [isSaving, setIsSaving] = useState(false);
-  const [pulseAnimation] = useState(new Animated.Value(1));
+  const { token } = useContext(AuthContext); // Récupération du token d'authentification
 
-  const screenWidth = Dimensions.get("window").width;
-  const itemWidth = screenWidth < 400 ? (screenWidth - 60) / 3 : 100;
+  // États locaux
+  const [items, setItems] = useState<Item[]>([]); // Liste complète des items
+  const [filteredItems, setFilteredItems] = useState<Item[]>([]); // Items filtrés par recherche/catégorie
+  const [currentVersion, setCurrentVersion] = useState<string>(""); // Version actuelle des données LoL
+  const [loading, setLoading] = useState<boolean>(true); // Indicateur de chargement
+  const [error, setError] = useState<string | null>(null); // Message d'erreur
+  const [searchQuery, setSearchQuery] = useState<string>(""); // Texte de recherche
+  const [selectedCategory, setSelectedCategory] = useState<string>("all"); // Catégorie sélectionnée
+  const [categories] = useState(CATEGORIES); // Liste des catégories (
+  const [selectedItem, setSelectedItem] = useState<Item | null>(null); // Item sélectionné pour affichage détaillé
+  const [addedItems, setAddedItems] = useState<string[]>(initialItems || []); // Liste des items ajoutés au build
+  const [isSaving, setIsSaving] = useState(false); // Indicateur de sauvegarde en cours
+  const [pulseAnimation] = useState(new Animated.Value(1)); // Animation pour les slots vides
 
+  const screenWidth = Dimensions.get("window").width; // Largeur de l'écran pour layout responsif
+  const itemWidth = screenWidth < 400 ? (screenWidth - 60) / 3 : 100; // Largeur dynamique des items
+
+  // Animation de pulsation pour les slots vides
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
@@ -97,6 +104,7 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
     ).start();
   }, [pulseAnimation]);
 
+  // Fonction pour déterminer la catégorie d'un item basée sur ses stats et tags
   const getItemCategory = useCallback((item: Item): string => {
     // Priorité 1 : Vérification explicite des bottes (tier 2 et tier 3)
     const bootIds = [
@@ -138,10 +146,11 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
     if (hasAD && hasDefense && !hasAP) return "Défensif/AD"; // Ex. Gage de Sterak
     if (hasDefense && !hasAD && !hasAP) return "Tank"; // Ex. Warmog
   
-    // Par défaut
+    
     return "Attaque Physique";
   }, []);
 
+  // Fonction pour déterminer la rareté d'un item
   const getItemRarity = useCallback((item: Item): string => {
     if (item.from && item.from.length > 0 && (!item.into || item.into.length === 0))
       return "LEGENDARY";
@@ -153,6 +162,7 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
     return "BASIC";
   }, []);
 
+  // Vérifie si un item est incompatible avec le build actuel (ex. doublon de bottes ou effet unique)
   const isItemIncompatible = useCallback(
     (item: Item): boolean => {
       if (
@@ -187,6 +197,7 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
     [addedItems, items]
   );
 
+  // Initialisation des items ajoutés à partir des paramètres initiaux
   useEffect(() => {
     console.log("initialItems reçus :", initialItems);
     if (initialItems && addedItems.length === 0) {
@@ -194,6 +205,7 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   }, [initialItems]);
 
+  // Chargement des données des items depuis l'API Data Dragon
   useEffect(() => {
     const fetchItems = async () => {
       try {
@@ -209,6 +221,7 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
 
         const uniqueItems = new Map<string, Item>();
 
+        // Filtrage et normalisation des items
         Object.entries(itemsData.data).forEach(([id, item]: [string, any]) => {
           if (EXCLUDED_ITEMS.includes(id)) return;
 
@@ -236,6 +249,7 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
           }
         });
 
+        // Tri des items selon la catégorie ou la rareté
         const sortedItems = Array.from(uniqueItems.values()).sort((a, b) => {
           if (selectedCategory === "all") {
             const rarityComparison =
@@ -263,6 +277,7 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
     fetchItems();
   }, [getItemCategory, getItemRarity, selectedCategory]);
 
+  // Filtrage des items en fonction de la recherche et de la catégorie
   useEffect(() => {
     let result = [...items];
     if (selectedCategory !== "all") {
@@ -284,6 +299,7 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
     setFilteredItems(result);
   }, [searchQuery, selectedCategory, items]);
 
+  // Attribution d'une couleur selon la rareté
   const getRarityColor = (rarity: string): string => {
     switch (rarity) {
       case "LEGENDARY":
@@ -299,6 +315,7 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   };
 
+  // Suppression des balises HTML pour le texte brut
   const stripHtmlTags = (html: string): string => {
     return html
       .replace(/<\/?[^>]+(>|$)/g, "")
@@ -307,8 +324,10 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
       .trim();
   };
 
+  // Gestion du clic sur un item pour afficher ses détails
   const handleItemPress = (item: Item) => setSelectedItem(item);
 
+  // Ajout ou suppression d'un item dans le build
   const handleToggleItem = (itemId: string) => {
     if (addedItems.includes(itemId)) {
       setAddedItems(addedItems.filter((id) => id !== itemId));
@@ -330,6 +349,7 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
     setSelectedItem(null);
   };
 
+  // Sauvegarde du build via l'API
   const handleSaveBuild = async () => {
     if (!token || isSaving) {
       Alert.alert("Erreur", isSaving ? "Sauvegarde en cours..." : "Vous devez être connecté pour sauvegarder un build.");
@@ -374,6 +394,7 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   };
 
+  // Affichage des détails d'un item sélectionné
   const renderItemDetails = () => {
     if (!selectedItem) return null;
     const rarityLabel = {
@@ -430,6 +451,7 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
     );
   };
 
+  // Affichage du panneau de build avec les items sélectionnés
   const renderBuildPanel = () => {
     const sortedAddedItems = [...addedItems].sort((a, b) => {
       const itemA = items.find((i) => i.id === a);
@@ -479,6 +501,7 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
     );
   };
 
+  // Affichage de l'état de chargement
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -488,6 +511,7 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
     );
   }
 
+  // Affichage d'une erreur si présente
   if (error) {
     return (
       <View style={styles.loadingContainer}>
@@ -496,6 +520,7 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
     );
   }
 
+  // Rendu principal de l'écran
   return (
     <SafeAreaView style={styles.container}>
       {renderBuildPanel()}
@@ -584,7 +609,7 @@ const ItemSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
   );
 };
 
-// Styles (inchangés)
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#121212" },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#121212" },

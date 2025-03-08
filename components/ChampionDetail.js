@@ -13,6 +13,7 @@ const ChampionDetailScreen = ({ route }) => {
   const [savedBuilds, setSavedBuilds] = useState([]);
   const [championLevel, setChampionLevel] = useState(1);
   const [selectedBuildId, setSelectedBuildId] = useState(null);
+  const [itemsData, setItemsData] = useState({}); // Nouvel état pour les données des items
   const navigation = useNavigation();
 
   if (!champion) {
@@ -22,7 +23,7 @@ const ChampionDetailScreen = ({ route }) => {
   const calculateStat = (base, perLevel, level) => base + perLevel * (level - 1);
 
   const calculateBuildStats = () => {
-    if (!selectedBuildId) return {};
+    if (!selectedBuildId || !itemsData) return {};
     const selectedBuild = savedBuilds.find(build => build.id === selectedBuildId);
     if (!selectedBuild || !Array.isArray(JSON.parse(selectedBuild.items))) return {};
 
@@ -41,22 +42,20 @@ const ChampionDetailScreen = ({ route }) => {
     };
 
     items.forEach(itemId => {
-      const itemStats = {
-        "3006": { attackSpeed: 0.25, attackDamage: 25 },
-        "3089": { abilityPower: 120 },
-        "3065": { hp: 450, hpRegen: 10 },
-      };
-      const stats = itemStats[itemId] || {};
-      bonuses.hp += stats.hp || 0;
-      bonuses.mp += stats.mp || 0;
-      bonuses.armor += stats.armor || 0;
-      bonuses.spellblock += stats.spellblock || 0;
-      bonuses.attackDamage += stats.attackDamage || 0;
-      bonuses.attackSpeed += stats.attackSpeed || 0;
-      bonuses.hpRegen += stats.hpRegen || 0;
-      bonuses.mpRegen += stats.mpRegen || 0;
-      bonuses.crit += stats.crit || 0;
-      bonuses.abilityPower += stats.abilityPower || 0;
+      const item = itemsData[itemId];
+      if (item && item.stats) {
+        const stats = item.stats;
+        bonuses.hp += stats.FlatHPPoolMod || 0;
+        bonuses.mp += stats.FlatMPPoolMod || 0;
+        bonuses.armor += stats.FlatArmorMod || 0;
+        bonuses.spellblock += stats.FlatSpellBlockMod || 0;
+        bonuses.attackDamage += stats.FlatPhysicalDamageMod || 0;
+        bonuses.attackSpeed += stats.PercentAttackSpeedMod || 0; // Pourcentage, à ajuster si nécessaire
+        bonuses.hpRegen += stats.FlatHPRegenMod || 0;
+        bonuses.mpRegen += stats.FlatMPRegenMod || 0;
+        bonuses.crit += (stats.FlatCritChanceMod || 0) * 100; // Converti en %
+        bonuses.abilityPower += stats.FlatMagicDamageMod || 0;
+      }
     });
 
     return bonuses;
@@ -64,17 +63,18 @@ const ChampionDetailScreen = ({ route }) => {
 
   const buildBonuses = calculateBuildStats();
 
+  const baseAttackSpeed = champion.stats.attackspeed;
   const hp = calculateStat(champion.stats.hp, champion.stats.hpperlevel, championLevel) + (buildBonuses.hp || 0);
   const mp = calculateStat(champion.stats.mp, champion.stats.mpperlevel, championLevel) + (buildBonuses.mp || 0);
   const armor = calculateStat(champion.stats.armor, champion.stats.armorperlevel, championLevel) + (buildBonuses.armor || 0);
   const spellblock = calculateStat(champion.stats.spellblock, champion.stats.spellblockperlevel, championLevel) + (buildBonuses.spellblock || 0);
   const attackDamage = calculateStat(champion.stats.attackdamage, champion.stats.attackdamageperlevel, championLevel) + (buildBonuses.attackDamage || 0);
-  const attackSpeed = (champion.stats.attackspeed + champion.stats.attackspeedperlevel * (championLevel - 1)) + (buildBonuses.attackSpeed || 0);
+  const attackSpeed = calculateStat(baseAttackSpeed, champion.stats.attackspeedperlevel, championLevel) * (1 + (buildBonuses.attackSpeed || 0));
   const moveSpeed = champion.stats.movespeed;
   const attackRange = champion.stats.attackrange;
   const hpRegen = calculateStat(champion.stats.hpregen, champion.stats.hpregenperlevel, championLevel) + (buildBonuses.hpRegen || 0);
   const mpRegen = calculateStat(champion.stats.mpregen, champion.stats.mpregenperlevel, championLevel) + (buildBonuses.mpRegen || 0);
-  const crit = champion.stats.crit + champion.stats.critperlevel * (championLevel - 1) + (buildBonuses.crit || 0);
+  const crit = calculateStat(champion.stats.crit, champion.stats.critperlevel, championLevel) + (buildBonuses.crit || 0);
   const abilityPower = 0 + (buildBonuses.abilityPower || 0);
 
   useEffect(() => {
@@ -83,9 +83,14 @@ const ChampionDetailScreen = ({ route }) => {
         const versionResponse = await fetch("https://ddragon.leagueoflegends.com/api/versions.json");
         const versions = await versionResponse.json();
         setCurrentVersion(versions[0]);
+
+        // Récupérer les données des items
+        const itemsResponse = await fetch(`https://ddragon.leagueoflegends.com/cdn/${versions[0]}/data/en_US/item.json`);
+        const itemsJson = await itemsResponse.json();
+        setItemsData(itemsJson.data);
         setLoading(false);
       } catch (err) {
-        console.error("Erreur lors de la récupération de la version:", err);
+        console.error("Erreur lors de la récupération des données:", err);
         setError(err.message);
         setLoading(false);
       }
@@ -171,15 +176,19 @@ const ChampionDetailScreen = ({ route }) => {
   };
 
   const renderStats = () => {
+    if (loading || !itemsData) {
+      return <Text style={styles.loadingText}>Chargement des données...</Text>;
+    }
+
     const baseHp = calculateStat(champion.stats.hp, champion.stats.hpperlevel, championLevel);
     const baseMp = calculateStat(champion.stats.mp, champion.stats.mpperlevel, championLevel);
     const baseArmor = calculateStat(champion.stats.armor, champion.stats.armorperlevel, championLevel);
     const baseSpellblock = calculateStat(champion.stats.spellblock, champion.stats.spellblockperlevel, championLevel);
     const baseAttackDamage = calculateStat(champion.stats.attackdamage, champion.stats.attackdamageperlevel, championLevel);
-    const baseAttackSpeed = champion.stats.attackspeed + champion.stats.attackspeedperlevel * (championLevel - 1);
+    const baseAttackSpeed = calculateStat(champion.stats.attackspeed, champion.stats.attackspeedperlevel, championLevel);
     const baseHpRegen = calculateStat(champion.stats.hpregen, champion.stats.hpregenperlevel, championLevel);
     const baseMpRegen = calculateStat(champion.stats.mpregen, champion.stats.mpregenperlevel, championLevel);
-    const baseCrit = champion.stats.crit + champion.stats.critperlevel * (championLevel - 1);
+    const baseCrit = calculateStat(champion.stats.crit, champion.stats.critperlevel, championLevel);
 
     return (
         <View style={styles.statsContainer}>
@@ -331,27 +340,33 @@ const ChampionDetailScreen = ({ route }) => {
   );
 
   return (
-      <ScrollView style={styles.container}>
-        <Text style={styles.title}>{champion.name}</Text>
-        <Image
+    <ScrollView style={styles.container}>
+      {loading || !itemsData ? (
+        <Text style={styles.loadingText}>Chargement des données...</Text>
+      ) : (
+        <>
+          <Text style={styles.title}>{champion.name}</Text>
+          <Image
             source={{ uri: `https://ddragon.leagueoflegends.com/cdn/${currentVersion}/img/champion/${champion.id}.png` }}
             style={styles.championImage}
-        />
-        <Text style={styles.role}>Rôle: {champion.tags.join(", ")}</Text>
-        <Text style={styles.description}>{champion.blurb}</Text>
+          />
+          <Text style={styles.role}>Rôle: {champion.tags.join(", ")}</Text>
+          <Text style={styles.description}>{champion.blurb}</Text>
 
-        <Text style={styles.subTitle}>Statistiques de base :</Text>
-        {renderStats()}
-        {renderLevelControl()}
-        <Text style={styles.subTitle}>Sorts :</Text>
-        {renderPassive()}
-        {renderSpells()}
-        {renderBuilds()}
-      </ScrollView>
+          <Text style={styles.subTitle}>Statistiques de base :</Text>
+          {renderStats()}
+          {renderLevelControl()}
+          <Text style={styles.subTitle}>Sorts :</Text>
+          {renderPassive()}
+          {renderSpells()}
+          {renderBuilds()}
+        </>
+      )}
+    </ScrollView>
   );
 };
 
-// Styles mis à jour
+// Styles (inchangés)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -492,7 +507,7 @@ const styles = StyleSheet.create({
   },
   checkboxChecked: {
     borderWidth: 3,
-    backgroundColor: "rgba(255, 204, 0, 0.2)", // Fond léger pour effet moderne
+    backgroundColor: "rgba(255, 204, 0, 0.2)",
   },
   checkboxInner: {
     width: 10,
