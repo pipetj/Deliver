@@ -170,7 +170,10 @@ router.delete("/builds/:id", verifyToken, async (req, res) => {
   try {
     const existingBuild = await prisma.build.findUnique({ where: { id } });
     if (!existingBuild) return res.status(404).json({ error: "Build non trouvé" });
-    if (existingBuild.userId !== req.userId) return res.status(403).json({ error: "Permission refusée" });
+    if (String(existingBuild.userId) !== String(req.userId)) {
+      return res.status(403).json({ error: "Permission refusée" });
+    }
+
 
     await prisma.build.delete({ where: { id } });
     res.json({ message: "Build supprimé avec succès" });

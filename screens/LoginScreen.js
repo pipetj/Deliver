@@ -20,7 +20,7 @@ const LoginScreen = ({ navigation }) => {
             await AsyncStorage.setItem("token", response.data.token);
             await loginContext(response.data.token, response.data.user);
             Alert.alert("Succès", "Connexion réussie !");
-            navigation.navigate("Champions");
+            navigation.navigate("Championlist");
         } catch (error) {
             Alert.alert("Erreur", "Email ou mot de passe incorrect");
         }

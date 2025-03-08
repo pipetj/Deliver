@@ -1,76 +1,108 @@
-// frontend/App.tsx
-import React from 'react';
+import React, { useContext } from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
-import { StatusBar } from 'react-native';
-import { AuthProvider } from '@/context/AuthContext';
-import ChampionsList from '@/components/Championlist';
+import { Pressable, Text, StyleSheet } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { AuthProvider, AuthContext } from '@/context/AuthContext';
 import ChampionDetailScreen from '@/components/ChampionDetail';
-import ItemSelectionScreen from '@/screens/ItemSelectionScreen';
 import LoginScreen from '@/screens/LoginScreen';
-import RegisterScreen from '@/screens/RegisterScreen';
-import ProfileScreen from '@/screens/ProfileScreen'; // Nouvelle importation
+import Championlist from '@/components/Championlist';
+import ProfileScreen from '@/screens/ProfileScreen';
+import ItemSelectionScreen from '@/screens/ItemSelectionScreen';
 
-// Définir les types pour les paramètres de navigation
-export type RootStackParamList = {
-    Login: undefined;
-    Register: undefined;
-    Champions: undefined;
-    ChampionDetail: { champion: any };
-    ItemSelectionScreen: undefined;
-    Profile: undefined; // Ajout du type pour Profile
+const Stack = createStackNavigator();
+
+const RootNavigator = () => {
+    const { token } = useContext(AuthContext);
+
+    return (
+        <Stack.Navigator
+            initialRouteName={token ? 'Championlist' : 'Login'}
+            screenOptions={{
+                headerStyle: {
+                    backgroundColor: '#1e1e1e',
+                },
+                headerTintColor: '#ffcc00',
+                headerTitleStyle: {
+                    fontWeight: 'bold',
+                },
+                headerRight: () => <LogoutButton />,
+            }}
+        >
+            <Stack.Screen
+                name="Championlist"
+                component={Championlist}
+                options={{ headerLeft: () => null }} // Pas de flèche
+            />
+            <Stack.Screen
+                name="ItemSelectionScreen"
+                component={ItemSelectionScreen}
+                options={{ headerLeft: () => null }} // Pas de flèche
+            />
+            <Stack.Screen
+                name="Profile"
+                component={ProfileScreen}
+            />
+            <Stack.Screen
+                name="ChampionDetail"
+                component={ChampionDetailScreen}
+                // Flèche conservée par défaut
+            />
+            <Stack.Screen
+                name="Login"
+                component={LoginScreen}
+                options={{
+                    headerRight: null,
+                    headerLeft: () => null // Pas de flèche
+                }}
+            />
+        </Stack.Navigator>
+    );
 };
 
-const Stack = createStackNavigator<RootStackParamList>();
+const LogoutButton = () => {
+    const { logout } = useContext(AuthContext);
+    const navigation = useNavigation();
 
-export default function App() {
+    const handleLogout = () => {
+        if (logout) {
+            logout();
+            navigation.navigate('Login');
+        }
+    };
+
+    return (
+        <Pressable
+            style={({ pressed }) => [
+                styles.logoutButton,
+                { backgroundColor: pressed ? '#cc0000' : '#ff4444' },
+            ]}
+            onPress={handleLogout}
+        >
+            <Text style={styles.logoutButtonText}>Déconnexion</Text>
+        </Pressable>
+    );
+};
+
+const App = () => {
     return (
         <AuthProvider>
-            <StatusBar barStyle="light-content" backgroundColor="#1D3D47" />
-            <Stack.Navigator
-                initialRouteName="Login"
-                screenOptions={{
-                    headerStyle: {
-                        backgroundColor: '#1D3D47',
-                    },
-                    headerTintColor: '#fff',
-                    headerTitleStyle: {
-                        fontWeight: 'bold',
-                    },
-                }}
-            >
-                <Stack.Screen
-                    name="Login"
-                    component={LoginScreen}
-                    options={{ title: 'Connexion', headerShown: false }}
-                />
-                <Stack.Screen
-                    name="Register"
-                    component={RegisterScreen}
-                    options={{ title: 'Inscription', headerShown: false }}
-                />
-                <Stack.Screen
-                    name="Champions"
-                    component={ChampionsList}
-                    options={{ title: 'Liste des Champions', headerShown: false }}
-                />
-                <Stack.Screen
-                    name="ChampionDetail"
-                    component={ChampionDetailScreen}
-                    options={({ route }) => ({
-                        title: route.params?.champion?.name || 'Détails du Champion',
-                    })}
-                />
-                <Stack.Screen
-                    name="ItemSelectionScreen"
-                    component={ItemSelectionScreen}
-                    options={{ title: "Sélection d'objets" }}
-                />
-                <Stack.Screen
-                    name="Profile"
-                    component={ProfileScreen}
-                    options={{ title: 'Profil', headerShown: false }} // Ajout de la route Profile
-                />
-            </Stack.Navigator>
+            <RootNavigator />
         </AuthProvider>
     );
-}
+};
+
+const styles = StyleSheet.create({
+    logoutButton: {
+        paddingVertical: 3,    // Réduit de 5 à 3
+        paddingHorizontal: 8,  // Réduit de 10 à 8
+        borderRadius: 4,       // Légèrement réduit
+        marginRight: 10,
+    },
+    logoutButtonText: {
+        fontSize: 14,          // Réduit de 16 à 14
+        color: '#fff',
+        fontWeight: 'bold',
+    },
+});
+
+export default App;

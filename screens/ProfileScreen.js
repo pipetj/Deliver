@@ -14,7 +14,7 @@ import {
 import axios from "axios";
 import { useNavigation } from "@react-navigation/native";
 import { AuthContext } from "@/context/AuthContext";
-import { getFavorites } from "../api/api";
+import { getFavorites } from "@/api/api";
 
 const { width: screenWidth } = Dimensions.get("window");
 const getResponsiveSize = (size) => screenWidth * (size / 375);
@@ -166,7 +166,7 @@ const ProfileScreen = () => {
             {/* Bouton Retour */}
             <Pressable
                 style={styles.backButton}
-                onPress={() => navigation.navigate("Champions")}
+                onPress={() => navigation.navigate("Championlist")}
             >
                 <Text style={styles.backButtonText}>Retour aux Champions</Text>
             </Pressable>
