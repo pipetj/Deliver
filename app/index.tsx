@@ -8,6 +8,7 @@ import LoginScreen from '@/screens/LoginScreen';
 import Championlist from '@/components/Championlist';
 import ProfileScreen from '@/screens/ProfileScreen';
 import ItemSelectionScreen from '@/screens/ItemSelectionScreen';
+import RegisterScreen from "@/screens/RegisterScreen";
 
 const Stack = createStackNavigator();
 
@@ -50,6 +51,14 @@ const RootNavigator = () => {
             <Stack.Screen
                 name="Login"
                 component={LoginScreen}
+                options={{
+                    headerRight: null,
+                    headerLeft: () => null // Pas de flèche
+                }}
+            />
+            <Stack.Screen
+                name="Register"
+                component={RegisterScreen}
                 options={{
                     headerRight: null,
                     headerLeft: () => null // Pas de flèche
