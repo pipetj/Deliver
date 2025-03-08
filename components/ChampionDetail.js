@@ -1,8 +1,20 @@
-import React, { useEffect, useState, useContext } from "react";
-import { ScrollView, View, Text, StyleSheet, Image, Pressable, Alert } from "react-native";
+import React, { useEffect, useState, useContext, useRef } from "react";
+import {
+  ScrollView,
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  Pressable,
+  Alert,
+  FlatList,
+  Dimensions,
+} from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { AuthContext } from '../context/AuthContext';
-import { getBuilds, updateBuild, deleteBuild } from '../api/api';
+import { AuthContext } from "../context/AuthContext";
+import { getBuilds, updateBuild, deleteBuild } from "../api/api";
+
+const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
 const ChampionDetailScreen = ({ route }) => {
   const champion = route.params?.champion;
@@ -13,7 +25,10 @@ const ChampionDetailScreen = ({ route }) => {
   const [savedBuilds, setSavedBuilds] = useState([]);
   const [championLevel, setChampionLevel] = useState(1);
   const [selectedBuildId, setSelectedBuildId] = useState(null);
-  const [itemsData, setItemsData] = useState({}); // Nouvel état pour les données des items
+  const [itemsData, setItemsData] = useState({});
+  const [skins, setSkins] = useState([]);
+  const [currentSkinIndex, setCurrentSkinIndex] = useState(0);
+  const flatListRef = useRef(null);
   const navigation = useNavigation();
 
   if (!champion) {
@@ -24,7 +39,7 @@ const ChampionDetailScreen = ({ route }) => {
 
   const calculateBuildStats = () => {
     if (!selectedBuildId || !itemsData) return {};
-    const selectedBuild = savedBuilds.find(build => build.id === selectedBuildId);
+    const selectedBuild = savedBuilds.find((build) => build.id === selectedBuildId);
     if (!selectedBuild || !Array.isArray(JSON.parse(selectedBuild.items))) return {};
 
     const items = JSON.parse(selectedBuild.items);
@@ -41,7 +56,7 @@ const ChampionDetailScreen = ({ route }) => {
       abilityPower: 0,
     };
 
-    items.forEach(itemId => {
+    items.forEach((itemId) => {
       const item = itemsData[itemId];
       if (item && item.stats) {
         const stats = item.stats;
@@ -50,10 +65,10 @@ const ChampionDetailScreen = ({ route }) => {
         bonuses.armor += stats.FlatArmorMod || 0;
         bonuses.spellblock += stats.FlatSpellBlockMod || 0;
         bonuses.attackDamage += stats.FlatPhysicalDamageMod || 0;
-        bonuses.attackSpeed += stats.PercentAttackSpeedMod || 0; // Pourcentage, à ajuster si nécessaire
+        bonuses.attackSpeed += stats.PercentAttackSpeedMod || 0;
         bonuses.hpRegen += stats.FlatHPRegenMod || 0;
         bonuses.mpRegen += stats.FlatMPRegenMod || 0;
-        bonuses.crit += (stats.FlatCritChanceMod || 0) * 100; // Converti en %
+        bonuses.crit += (stats.FlatCritChanceMod || 0) * 100;
         bonuses.abilityPower += stats.FlatMagicDamageMod || 0;
       }
     });
@@ -84,10 +99,14 @@ const ChampionDetailScreen = ({ route }) => {
         const versions = await versionResponse.json();
         setCurrentVersion(versions[0]);
 
-        // Récupérer les données des items
         const itemsResponse = await fetch(`https://ddragon.leagueoflegends.com/cdn/${versions[0]}/data/en_US/item.json`);
         const itemsJson = await itemsResponse.json();
         setItemsData(itemsJson.data);
+
+        const championResponse = await fetch(`https://ddragon.leagueoflegends.com/cdn/${versions[0]}/data/en_US/champion/${champion.id}.json`);
+        const championData = await championResponse.json();
+        setSkins(championData.data[champion.id].skins);
+
         setLoading(false);
       } catch (err) {
         console.error("Erreur lors de la récupération des données:", err);
@@ -100,7 +119,6 @@ const ChampionDetailScreen = ({ route }) => {
       if (!token) return;
       try {
         const buildsResponse = await getBuilds(token, champion.id);
-        console.log("Builds récupérés :", buildsResponse.data);
         setSavedBuilds(Array.isArray(buildsResponse.data) ? buildsResponse.data : []);
       } catch (err) {
         console.error("Erreur lors de la récupération des builds:", err);
@@ -115,6 +133,25 @@ const ChampionDetailScreen = ({ route }) => {
 
     loadData();
   }, [champion.id, token]);
+
+  useEffect(() => {
+    if (!skins || skins.length === 0) return;
+
+    const timer = setInterval(() => {
+      setCurrentSkinIndex((prevIndex) => {
+        const nextIndex = (prevIndex + 1) % skins.length;
+        if (flatListRef.current) {
+          flatListRef.current.scrollToIndex({
+            index: nextIndex,
+            animated: true,
+          });
+        }
+        return nextIndex;
+      });
+    }, 6000);
+
+    return () => clearInterval(timer);
+  }, [skins]);
 
   const refreshBuilds = async () => {
     if (!token) return;
@@ -132,7 +169,6 @@ const ChampionDetailScreen = ({ route }) => {
       Alert.alert("Erreur", "Vous devez être connecté pour modifier un build.");
       return;
     }
-
     try {
       const itemsString = JSON.stringify(newItems);
       await updateBuild(token, buildId, itemsString);
@@ -145,29 +181,16 @@ const ChampionDetailScreen = ({ route }) => {
   };
 
   const handleDeleteBuild = async (buildId) => {
-    console.log("Début de handleDeleteBuild", { buildId, token });
     if (!token) {
-      console.log("Token manquant");
       Alert.alert("Erreur", "Vous devez être connecté pour supprimer un build.");
       return;
     }
-
     try {
-      console.log("Envoi de la requête DELETE", { buildId, token });
-      const response = await deleteBuild(token, buildId);
-      console.log("Réponse de deleteBuild", { status: response.status, data: response.data });
+      await deleteBuild(token, buildId);
       await refreshBuilds();
       if (selectedBuildId === buildId) setSelectedBuildId(null);
-      console.log("Builds rafraîchis après suppression");
     } catch (err) {
-      console.error("Erreur lors de la suppression", {
-        message: err.message,
-        response: err.response ? { status: err.response.status, data: err.response.data } : "Pas de réponse",
-      });
-      Alert.alert(
-          "Erreur",
-          `Impossible de supprimer le build: ${err.response?.data?.error || err.message}`
-      );
+      Alert.alert("Erreur", `Impossible de supprimer le build: ${err.response?.data?.error || err.message}`);
     }
   };
 
@@ -175,21 +198,59 @@ const ChampionDetailScreen = ({ route }) => {
     setSelectedBuildId(selectedBuildId === buildId ? null : buildId);
   };
 
+  const formatChampionId = (id) => {
+    return id.charAt(0).toUpperCase() + id.slice(1).toLowerCase();
+  };
+
+  const renderSkinSlider = () => (
+      <FlatList
+          ref={flatListRef}
+          data={skins}
+          horizontal
+          pagingEnabled
+          snapToAlignment="center"
+          snapToInterval={screenWidth}
+          decelerationRate="fast"
+          showsHorizontalScrollIndicator={false}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={({ item }) => {
+            const formattedChampionId = formatChampionId(champion.id);
+            const skinUrl = `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${formattedChampionId}_${item.num}.jpg`;
+            return (
+                <View style={styles.skinContainer}>
+                  <Image
+                      source={{ uri: skinUrl }}
+                      style={styles.skinBackground}
+                      resizeMode="cover"
+                      onError={(e) => console.log(`Erreur chargement ${skinUrl}:`, e.nativeEvent.error)}
+                      onLoad={() => console.log(`Image chargée: ${skinUrl}`)}
+                  />
+                </View>
+            );
+          }}
+          onScrollToIndexFailed={(info) => {
+            const wait = new Promise(resolve => setTimeout(resolve, 500));
+            wait.then(() => {
+              flatListRef.current?.scrollToIndex({
+                index: info.index,
+                animated: true,
+              });
+            });
+          }}
+          initialScrollIndex={currentSkinIndex}
+          getItemLayout={(data, index) => ({
+            length: screenWidth,
+            offset: screenWidth * index,
+            index,
+          })}
+          style={styles.sliderContainer}
+      />
+  );
+
   const renderStats = () => {
     if (loading || !itemsData) {
       return <Text style={styles.loadingText}>Chargement des données...</Text>;
     }
-
-    const baseHp = calculateStat(champion.stats.hp, champion.stats.hpperlevel, championLevel);
-    const baseMp = calculateStat(champion.stats.mp, champion.stats.mpperlevel, championLevel);
-    const baseArmor = calculateStat(champion.stats.armor, champion.stats.armorperlevel, championLevel);
-    const baseSpellblock = calculateStat(champion.stats.spellblock, champion.stats.spellblockperlevel, championLevel);
-    const baseAttackDamage = calculateStat(champion.stats.attackdamage, champion.stats.attackdamageperlevel, championLevel);
-    const baseAttackSpeed = calculateStat(champion.stats.attackspeed, champion.stats.attackspeedperlevel, championLevel);
-    const baseHpRegen = calculateStat(champion.stats.hpregen, champion.stats.hpregenperlevel, championLevel);
-    const baseMpRegen = calculateStat(champion.stats.mpregen, champion.stats.mpregenperlevel, championLevel);
-    const baseCrit = calculateStat(champion.stats.crit, champion.stats.critperlevel, championLevel);
-
     return (
         <View style={styles.statsContainer}>
           <View style={styles.statsGrid}>
@@ -216,13 +277,13 @@ const ChampionDetailScreen = ({ route }) => {
         <View style={styles.levelButtonsContainer}>
           <Pressable
               style={styles.levelButton}
-              onPress={() => setChampionLevel(prevLevel => Math.max(1, prevLevel - 1))}
+              onPress={() => setChampionLevel((prevLevel) => Math.max(1, prevLevel - 1))}
           >
             <Text style={styles.levelButtonText}>-</Text>
           </Pressable>
           <Pressable
               style={styles.levelButton}
-              onPress={() => setChampionLevel(prevLevel => Math.min(18, prevLevel + 1))}
+              onPress={() => setChampionLevel((prevLevel) => Math.min(18, prevLevel + 1))}
           >
             <Text style={styles.levelButtonText}>+</Text>
           </Pressable>
@@ -247,7 +308,7 @@ const ChampionDetailScreen = ({ route }) => {
       Array.isArray(champion.spells) ? (
           champion.spells.map((spell, index) => (
               <View key={index} style={styles.spellContainer}>
-                <Text style={styles.spellName}>{['Q', 'W', 'E', 'R'][index]} - {spell.name}</Text>
+                <Text style={styles.spellName}>{["Q", "W", "E", "R"][index]} - {spell.name}</Text>
                 <Image
                     source={{ uri: `https://ddragon.leagueoflegends.com/cdn/${currentVersion}/img/spell/${spell.image.full}` }}
                     style={styles.spellIcon}
@@ -274,7 +335,7 @@ const ChampionDetailScreen = ({ route }) => {
                     >
                       <View style={[
                         styles.checkbox,
-                        selectedBuildId === build.id && styles.checkboxChecked
+                        selectedBuildId === build.id && styles.checkboxChecked,
                       ]}>
                         {selectedBuildId === build.id && <View style={styles.checkboxInner} />}
                       </View>
@@ -298,21 +359,23 @@ const ChampionDetailScreen = ({ route }) => {
                     <Pressable
                         style={({ pressed }) => [
                           styles.editButton,
-                          { backgroundColor: pressed ? "#e6b800" : "#ffcc00" }
+                          { backgroundColor: pressed ? "#e6b800" : "#ffcc00" },
                         ]}
-                        onPress={() => navigation.navigate("ItemSelectionScreen", {
-                          championId: champion.id,
-                          buildId: build.id,
-                          initialItems: JSON.parse(build.items),
-                          onSaveBuild: (newItems) => handleEditBuild(build.id, newItems)
-                        })}
+                        onPress={() =>
+                            navigation.navigate("ItemSelectionScreen", {
+                              championId: champion.id,
+                              buildId: build.id,
+                              initialItems: JSON.parse(build.items),
+                              onSaveBuild: (newItems) => handleEditBuild(build.id, newItems),
+                            })
+                        }
                     >
                       <Text style={styles.editButtonText}>Modifier</Text>
                     </Pressable>
                     <Pressable
                         style={({ pressed }) => [
                           styles.deleteButton,
-                          { backgroundColor: pressed ? "#cc0000" : "#ff4444" }
+                          { backgroundColor: pressed ? "#cc0000" : "#ff4444" },
                         ]}
                         onPress={() => handleDeleteBuild(build.id)}
                     >
@@ -327,12 +390,14 @@ const ChampionDetailScreen = ({ route }) => {
         <Pressable
             style={({ pressed }) => [
               styles.addButton,
-              { backgroundColor: pressed ? "#e6b800" : "#ffcc00" }
+              { backgroundColor: pressed ? "#e6b800" : "#ffcc00" },
             ]}
-            onPress={() => navigation.navigate("ItemSelectionScreen", {
-              championId: champion.id,
-              onSaveBuild: () => refreshBuilds()
-            })}
+            onPress={() =>
+                navigation.navigate("ItemSelectionScreen", {
+                  championId: champion.id,
+                  onSaveBuild: () => refreshBuilds(),
+                })
+            }
         >
           <Text style={styles.addButtonText}>+</Text>
         </Pressable>
@@ -340,50 +405,75 @@ const ChampionDetailScreen = ({ route }) => {
   );
 
   return (
-    <ScrollView style={styles.container}>
-      {loading || !itemsData ? (
-        <Text style={styles.loadingText}>Chargement des données...</Text>
-      ) : (
-        <>
-          <Text style={styles.title}>{champion.name}</Text>
-          <Image
-            source={{ uri: `https://ddragon.leagueoflegends.com/cdn/${currentVersion}/img/champion/${champion.id}.png` }}
-            style={styles.championImage}
-          />
-          <Text style={styles.role}>Rôle: {champion.tags.join(", ")}</Text>
-          <Text style={styles.description}>{champion.blurb}</Text>
-
-          <Text style={styles.subTitle}>Statistiques de base :</Text>
-          {renderStats()}
-          {renderLevelControl()}
-          <Text style={styles.subTitle}>Sorts :</Text>
-          {renderPassive()}
-          {renderSpells()}
-          {renderBuilds()}
-        </>
-      )}
-    </ScrollView>
+      <View style={styles.fullContainer}>
+        {renderSkinSlider()}
+        <ScrollView style={styles.contentContainer} contentContainerStyle={styles.contentPadding}>
+          {loading || !itemsData ? (
+              <Text style={styles.loadingText}>Chargement des données...</Text>
+          ) : (
+              <>
+                <Text style={styles.title}>{champion.name}</Text>
+                <Image
+                    source={{ uri: `https://ddragon.leagueoflegends.com/cdn/${currentVersion}/img/champion/${champion.id}.png` }}
+                    style={styles.championImage}
+                />
+                <Text style={styles.role}>Rôle: {champion.tags.join(", ")}</Text>
+                <Text style={styles.description}>{champion.blurb}</Text>
+                <Text style={styles.subTitle}>Statistiques de base :</Text>
+                {renderStats()}
+                {renderLevelControl()}
+                <Text style={styles.subTitle}>Sorts :</Text>
+                {renderPassive()}
+                {renderSpells()}
+                {renderBuilds()}
+              </>
+          )}
+        </ScrollView>
+      </View>
   );
 };
 
-// Styles (inchangés)
 const styles = StyleSheet.create({
-  container: {
+  fullContainer: {
     flex: 1,
+    backgroundColor: "transparent",
+  },
+  sliderContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: screenHeight,
+    zIndex: -1,
+  },
+  skinContainer: {
+    width: screenWidth,
+    height: screenHeight,
+  },
+  skinBackground: {
+    width: screenWidth,
+    height: screenHeight,
+  },
+  contentContainer: {
+    flex: 1,
+    backgroundColor: "transparent",
+  },
+  contentPadding: {
     padding: 20,
-    backgroundColor: "#1e1e1e",
   },
   loadingText: {
     color: "#ffcc00",
     fontSize: 18,
     textAlign: "center",
     marginTop: 20,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   errorText: {
     color: "#ff4444",
     fontSize: 18,
     textAlign: "center",
     marginTop: 20,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   title: {
     fontSize: 32,
@@ -394,6 +484,7 @@ const styles = StyleSheet.create({
     textShadowColor: "#ffcc00",
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 10,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   championImage: {
     width: 250,
@@ -408,13 +499,15 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginBottom: 10,
     textAlign: "center",
-    color: "#999",
+    color: "#fff",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   description: {
     fontSize: 16,
     marginBottom: 20,
     textAlign: "center",
-    color: "#ccc",
+    color: "#fff",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   subTitle: {
     fontSize: 22,
@@ -424,11 +517,12 @@ const styles = StyleSheet.create({
     textShadowColor: "#333",
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 5,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   statsContainer: {
     marginBottom: 20,
     padding: 15,
-    backgroundColor: "#2c2c2c",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
     borderRadius: 8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -446,12 +540,13 @@ const styles = StyleSheet.create({
   },
   statText: {
     fontSize: 16,
-    color: "#ccc",
+    color: "#fff",
+    backgroundColor: "transparent",
   },
   spellContainer: {
     marginBottom: 20,
     padding: 10,
-    backgroundColor: "#2c2c2c",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "#ffcc00",
@@ -461,6 +556,7 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#ffcc00",
     marginBottom: 5,
+    backgroundColor: "transparent",
   },
   spellIcon: {
     width: 50,
@@ -472,15 +568,17 @@ const styles = StyleSheet.create({
   },
   spellDescription: {
     fontSize: 16,
-    color: "#ccc",
+    color: "#fff",
+    backgroundColor: "transparent",
   },
   buildsContainer: {
     marginBottom: 20,
+    backgroundColor: "transparent",
   },
   buildContainer: {
     marginBottom: 15,
     padding: 10,
-    backgroundColor: "#2c2c2c",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "#ffcc00",
@@ -520,16 +618,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#ffcc00",
     fontWeight: "bold",
+    backgroundColor: "transparent",
   },
   buildTitle: {
     fontSize: 18,
     fontWeight: "bold",
     color: "#ffcc00",
+    backgroundColor: "transparent",
   },
   buildItemsContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
     marginBottom: 10,
+    backgroundColor: "transparent",
   },
   buildItemImage: {
     width: 40,
@@ -549,7 +650,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 15,
     borderRadius: 5,
-    backgroundColor: "#ffcc00",
   },
   editButtonText: {
     fontSize: 16,
@@ -560,7 +660,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 15,
     borderRadius: 5,
-    backgroundColor: "#ff4444",
   },
   deleteButtonText: {
     fontSize: 16,
@@ -575,7 +674,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     alignSelf: "center",
     marginTop: 10,
-    backgroundColor: "#ffcc00",
   },
   addButtonText: {
     fontSize: 30,
@@ -585,7 +683,7 @@ const styles = StyleSheet.create({
   levelContainer: {
     marginBottom: 20,
     padding: 15,
-    backgroundColor: "#2c2c2c",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
     borderRadius: 8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -594,9 +692,10 @@ const styles = StyleSheet.create({
   },
   levelText: {
     fontSize: 18,
-    color: "#ccc",
+    color: "#fff",
     marginBottom: 10,
     textAlign: "center",
+    backgroundColor: "transparent",
   },
   levelButtonsContainer: {
     flexDirection: "row",

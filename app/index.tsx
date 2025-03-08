@@ -37,7 +37,6 @@ const RootNavigator = () => {
             <Stack.Screen
                 name="ItemSelectionScreen"
                 component={ItemSelectionScreen}
-                options={{ headerLeft: () => null }} // Pas de flèche
             />
             <Stack.Screen
                 name="Profile"
