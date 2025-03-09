@@ -1,4 +1,3 @@
-// components/Championlist.js
 import React, { useEffect, useState, useContext } from "react";
 import { View, Text, FlatList, Image, ActivityIndicator, StyleSheet, Pressable, TextInput, Dimensions } from "react-native";
 import axios from "axios";
@@ -20,6 +19,7 @@ const ChampionsList = () => {
   const [selectedRole, setSelectedRole] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [version, setVersion] = useState(null);
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false); // Nouvel état pour le filtre favoris
   const navigation = useNavigation();
   const { token } = useContext(AuthContext);
 
@@ -69,12 +69,16 @@ const ChampionsList = () => {
 
   useEffect(() => {
     const filtered = champions.filter(champion =>
+        // Filtre de recherche (nom ou description)
         (champion.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             champion.blurb.toLowerCase().includes(searchQuery.toLowerCase())) &&
-        (selectedRole === "" || champion.tags.includes(selectedRole))
+        // Filtre par rôle
+        (selectedRole === "" || champion.tags.includes(selectedRole)) &&
+        // Filtre par favoris (si activé)
+        (!showFavoritesOnly || favorites.includes(champion.id))
     );
     setFilteredChampions(filtered);
-  }, [searchQuery, selectedRole, champions]);
+  }, [searchQuery, selectedRole, showFavoritesOnly, champions, favorites]);
 
   const toggleFavorite = async (championId) => {
     try {
@@ -134,6 +138,15 @@ const ChampionsList = () => {
                     </Pressable>
                 ))}
               </View>
+              {/* Bouton pour afficher uniquement les favoris */}
+              <Pressable
+                  style={[styles.favoriteFilterButton, showFavoritesOnly && styles.selectedFavoriteFilter]}
+                  onPress={() => setShowFavoritesOnly(!showFavoritesOnly)}
+              >
+                <Text style={styles.favoriteFilterText}>
+                  {showFavoritesOnly ? "Afficher tous" : "Favoris uniquement"}
+                </Text>
+              </Pressable>
             </View>
         )}
         {menuOpen && isMobile && (
@@ -157,6 +170,15 @@ const ChampionsList = () => {
                     </Pressable>
                 ))}
               </View>
+              {/* Bouton pour afficher uniquement les favoris dans le menu burger */}
+              <Pressable
+                  style={[styles.favoriteFilterButton, showFavoritesOnly && styles.selectedFavoriteFilter]}
+                  onPress={() => setShowFavoritesOnly(!showFavoritesOnly)}
+              >
+                <Text style={styles.favoriteFilterText}>
+                  {showFavoritesOnly ? "Afficher tous" : "Favoris uniquement"}
+                </Text>
+              </Pressable>
             </View>
         )}
 
@@ -184,7 +206,7 @@ const ChampionsList = () => {
             )}
             contentContainerStyle={[
               styles.flatListContainer,
-              { paddingTop: menuOpen ? getResponsiveSize(220) : getResponsiveSize(60) }, // Ajustement dynamique
+              { paddingTop: menuOpen ? getResponsiveSize(260) : getResponsiveSize(60) }, // Ajusté pour le nouveau bouton
             ]}
             showsVerticalScrollIndicator={false}
         />
@@ -223,7 +245,7 @@ const styles = StyleSheet.create({
   menu: {
     backgroundColor: "#2c2c2e",
     width: '100%',
-    height: getResponsiveSize(190),
+    height: getResponsiveSize(230), // Ajusté pour le nouveau bouton
     padding: getResponsiveSize(15),
     borderRadius: 10,
     marginBottom: getResponsiveSize(15),
@@ -252,7 +274,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
-    marginBottom: getResponsiveSize(20),
+    marginBottom: getResponsiveSize(10),
   },
   roleButton: {
     backgroundColor: "#444",
@@ -265,6 +287,22 @@ const styles = StyleSheet.create({
     backgroundColor: "#fbcd03",
   },
   roleText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: getResponsiveSize(14),
+  },
+  favoriteFilterButton: {
+    backgroundColor: "#444",
+    paddingVertical: getResponsiveSize(10),
+    paddingHorizontal: getResponsiveSize(15),
+    borderRadius: 8,
+    marginTop: getResponsiveSize(10),
+    alignSelf: "center",
+  },
+  selectedFavoriteFilter: {
+    backgroundColor: "#fbcd03",
+  },
+  favoriteFilterText: {
     color: "#fff",
     fontWeight: "bold",
     fontSize: getResponsiveSize(14),
