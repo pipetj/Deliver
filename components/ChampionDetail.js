@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext, useRef } from "react";
+import React, { useEffect, useState, useContext, useRef, useMemo } from "react";
 import {
   ScrollView,
   View,
@@ -13,13 +13,15 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import { AuthContext } from "../context/AuthContext";
 import { getBuilds, updateBuild, deleteBuild } from "../api/api";
+import HTML from "react-native-render-html";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
 const ChampionDetailScreen = ({ route }) => {
-  const champion = route.params?.champion;
+  const championId = route.params?.champion?.id || null;
   const { token } = useContext(AuthContext);
   const [currentVersion, setCurrentVersion] = useState("");
+  const [champion, setChampion] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [savedBuilds, setSavedBuilds] = useState([]);
@@ -28,16 +30,64 @@ const ChampionDetailScreen = ({ route }) => {
   const [itemsData, setItemsData] = useState({});
   const [skins, setSkins] = useState([]);
   const [currentSkinIndex, setCurrentSkinIndex] = useState(0);
+  const [spellLevels, setSpellLevels] = useState({ Q: 0, W: 0, E: 0, R: 0 });
   const flatListRef = useRef(null);
   const navigation = useNavigation();
 
-  if (!champion) {
+  if (!championId) {
     return <Text style={styles.errorText}>Champion non spécifié</Text>;
   }
 
-  const calculateStat = (base, perLevel, level) => base + perLevel * (level - 1);
+  const resourceType = useMemo(() => {
+    if (!champion) return "Mana";
+    const usesEnergy = champion.stats.mpperlevel === 0 && champion.stats.mp > 0;
+    const noCost = champion.spells.every((spell) => spell.costBurn === "0");
+    const result = usesEnergy ? "Énergie" : noCost ? "Aucune ressource" : "Mana";
+    console.log(`resourceType for ${champion.name}:`, {
+      mp: champion.stats.mp,
+      mpperlevel: champion.stats.mpperlevel,
+      costBurns: champion.spells.map((spell) => spell.costBurn),
+      result,
+    });
+    return result;
+  }, [champion]);
 
-  const calculateBuildStats = () => {
+  const calculateStat = (base = 0, perLevel = 0, level = 1) => base + perLevel * (level - 1);
+
+  const spellBonuses = useMemo(() => {
+    if (!champion) return {};
+    let bonuses = {
+      hp: 0,
+      mp: 0,
+      armor: 0,
+      spellblock: 0,
+      attackDamage: 0,
+      attackSpeed: 0,
+      abilityPower: 0,
+      hpRegen: 0,
+      mpRegen: 0,
+      crit: 0,
+    };
+
+    if (champion.passive?.description.toLowerCase().includes("bonus")) {
+      bonuses.hp += spellLevels.Q * 5;
+      bonuses.attackDamage += spellLevels.W * 2;
+    }
+
+    champion.spells.forEach((spell, index) => {
+      const spellKey = ["Q", "W", "E", "R"][index];
+      const level = spellLevels[spellKey];
+      if (spell.description.toLowerCase().includes("bonus attack damage")) {
+        bonuses.attackDamage += level * 3;
+      } else if (spell.description.toLowerCase().includes("bonus health")) {
+        bonuses.hp += level * 10;
+      }
+    });
+
+    return bonuses;
+  }, [champion, spellLevels]);
+
+  const buildBonuses = useMemo(() => {
     if (!selectedBuildId || !itemsData) return {};
     const selectedBuild = savedBuilds.find((build) => build.id === selectedBuildId);
     if (!selectedBuild || !Array.isArray(JSON.parse(selectedBuild.items))) return {};
@@ -58,94 +108,130 @@ const ChampionDetailScreen = ({ route }) => {
 
     items.forEach((itemId) => {
       const item = itemsData[itemId];
-      if (item && item.stats) {
-        const stats = item.stats;
-        bonuses.hp += stats.FlatHPPoolMod || 0;
-        bonuses.mp += stats.FlatMPPoolMod || 0;
-        bonuses.armor += stats.FlatArmorMod || 0;
-        bonuses.spellblock += stats.FlatSpellBlockMod || 0;
-        bonuses.attackDamage += stats.FlatPhysicalDamageMod || 0;
-        bonuses.attackSpeed += stats.PercentAttackSpeedMod || 0;
-        bonuses.hpRegen += stats.FlatHPRegenMod || 0;
-        bonuses.mpRegen += stats.FlatMPRegenMod || 0;
-        bonuses.crit += (stats.FlatCritChanceMod || 0) * 100;
-        bonuses.abilityPower += stats.FlatMagicDamageMod || 0;
+      if (item?.stats) {
+        bonuses.hp += item.stats.FlatHPPoolMod || 0;
+        bonuses.mp += item.stats.FlatMPPoolMod || 0;
+        bonuses.armor += item.stats.FlatArmorMod || 0;
+        bonuses.spellblock += item.stats.FlatSpellBlockMod || 0;
+        bonuses.attackDamage += item.stats.FlatPhysicalDamageMod || 0;
+        bonuses.attackSpeed += item.stats.PercentAttackSpeedMod || 0;
+        bonuses.hpRegen += item.stats.FlatHPRegenMod || 0;
+        bonuses.mpRegen += item.stats.FlatMPRegenMod || 0;
+        bonuses.crit += (item.stats.FlatCritChanceMod || 0) * 100;
+        bonuses.abilityPower += item.stats.FlatMagicDamageMod || 0;
       }
     });
 
     return bonuses;
-  };
+  }, [selectedBuildId, savedBuilds, itemsData]);
 
-  const buildBonuses = calculateBuildStats();
-
-  const baseAttackSpeed = champion.stats.attackspeed;
-  const hp = calculateStat(champion.stats.hp, champion.stats.hpperlevel, championLevel) + (buildBonuses.hp || 0);
-  const mp = calculateStat(champion.stats.mp, champion.stats.mpperlevel, championLevel) + (buildBonuses.mp || 0);
-  const armor = calculateStat(champion.stats.armor, champion.stats.armorperlevel, championLevel) + (buildBonuses.armor || 0);
-  const spellblock = calculateStat(champion.stats.spellblock, champion.stats.spellblockperlevel, championLevel) + (buildBonuses.spellblock || 0);
-  const attackDamage = calculateStat(champion.stats.attackdamage, champion.stats.attackdamageperlevel, championLevel) + (buildBonuses.attackDamage || 0);
-  const attackSpeed = calculateStat(baseAttackSpeed, champion.stats.attackspeedperlevel, championLevel) * (1 + (buildBonuses.attackSpeed || 0));
-  const moveSpeed = champion.stats.movespeed;
-  const attackRange = champion.stats.attackrange;
-  const hpRegen = calculateStat(champion.stats.hpregen, champion.stats.hpregenperlevel, championLevel) + (buildBonuses.hpRegen || 0);
-  const mpRegen = calculateStat(champion.stats.mpregen, champion.stats.mpregenperlevel, championLevel) + (buildBonuses.mpRegen || 0);
-  const crit = calculateStat(champion.stats.crit, champion.stats.critperlevel, championLevel) + (buildBonuses.crit || 0);
-  const abilityPower = 0 + (buildBonuses.abilityPower || 0);
+  const stats = useMemo(() => {
+    if (!champion) return {};
+    const baseAttackSpeed = champion.stats.attackspeed;
+    const resType = resourceType;
+    return {
+      hp: calculateStat(champion.stats.hp, champion.stats.hpperlevel, championLevel) + (buildBonuses.hp || 0) + (spellBonuses.hp || 0),
+      mp: resType === "Mana" ? calculateStat(champion.stats.mp, champion.stats.mpperlevel, championLevel) + (buildBonuses.mp || 0) + (spellBonuses.mp || 0) : 0,
+      energy: resType === "Énergie" ? 200 + (buildBonuses.mp || 0) : 0,
+      armor: calculateStat(champion.stats.armor, champion.stats.armorperlevel, championLevel) + (buildBonuses.armor || 0) + (spellBonuses.armor || 0),
+      spellblock: calculateStat(champion.stats.spellblock, champion.stats.spellblockperlevel, championLevel) + (buildBonuses.spellblock || 0) + (spellBonuses.spellblock || 0),
+      attackDamage: calculateStat(champion.stats.attackdamage, champion.stats.attackdamageperlevel, championLevel) + (buildBonuses.attackDamage || 0) + (spellBonuses.attackDamage || 0),
+      attackSpeed: calculateStat(baseAttackSpeed, champion.stats.attackspeedperlevel, championLevel) * (1 + (buildBonuses.attackSpeed || 0) + (spellBonuses.attackSpeed || 0)),
+      moveSpeed: champion.stats.movespeed,
+      attackRange: champion.stats.attackrange,
+      hpRegen: calculateStat(champion.stats.hpregen, champion.stats.hpregenperlevel, championLevel) + (buildBonuses.hpRegen || 0) + (spellBonuses.hpRegen || 0),
+      mpRegen: resType === "Mana" ? calculateStat(champion.stats.mpregen, champion.stats.mpregenperlevel, championLevel) + (buildBonuses.mpRegen || 0) + (spellBonuses.mpRegen || 0) : 0,
+      crit: calculateStat(champion.stats.crit, champion.stats.critperlevel, championLevel) + (buildBonuses.crit || 0) + (spellBonuses.crit || 0),
+      abilityPower: (buildBonuses.abilityPower || 0) + (spellBonuses.abilityPower || 0),
+    };
+  }, [champion, championLevel, buildBonuses, spellBonuses, resourceType]);
 
   useEffect(() => {
-    const fetchChampionData = async () => {
+    const loadData = async () => {
       try {
+        setLoading(true);
+
         const versionResponse = await fetch("https://ddragon.leagueoflegends.com/api/versions.json");
         const versions = await versionResponse.json();
         setCurrentVersion(versions[0]);
 
-        const itemsResponse = await fetch(`https://ddragon.leagueoflegends.com/cdn/${versions[0]}/data/en_US/item.json`);
+        const itemsResponse = await fetch(`https://ddragon.leagueoflegends.com/cdn/${versions[0]}/data/fr_FR/item.json`);
         const itemsJson = await itemsResponse.json();
         setItemsData(itemsJson.data);
 
-        const championResponse = await fetch(`https://ddragon.leagueoflegends.com/cdn/${versions[0]}/data/en_US/champion/${champion.id}.json`);
-        const championData = await championResponse.json();
-        setSkins(championData.data[champion.id].skins);
+        const ddragonResponse = await fetch(`https://ddragon.leagueoflegends.com/cdn/${versions[0]}/data/fr_FR/champion/${championId}.json`);
+        const ddragonData = await ddragonResponse.json();
+        const ddragonChampion = ddragonData.data[championId];
 
-        setLoading(false);
+        const cdragonResponse = await fetch(`https://raw.communitydragon.org/latest/game/data/characters/${championId.toLowerCase()}/${championId.toLowerCase()}.bin.json`);
+        const cdragonData = await cdragonResponse.json();
+
+        const spellKeys = [
+          `Characters/${championId}/Spells/${championId}QAbility/${championId}Q`,
+          `Characters/${championId}/Spells/${championId}WAbility/${championId}W`,
+          `Characters/${championId}/Spells/${championId}EAbility/${championId}E`,
+          `Characters/${championId}/Spells/${championId}RAbility/${championId}R`,
+        ];
+
+        const championData = {
+          id: ddragonChampion.id,
+          name: ddragonChampion.name,
+          title: ddragonChampion.title,
+          blurb: ddragonChampion.blurb,
+          tags: ddragonChampion.tags,
+          stats: ddragonChampion.stats,
+          passive: ddragonChampion.passive,
+          spells: spellKeys.map((key, index) => {
+            const cdragonSpell = cdragonData[key]?.mSpell;
+            if (!cdragonSpell) {
+              console.warn(`Spell ${key} missing in CommunityDragon for ${championId}, using Data Dragon fallback`);
+              return {
+                ...ddragonChampion.spells[index],
+                mSpellCalculations: {},
+                mDataValues: [],
+              };
+            }
+            return {
+              id: ddragonChampion.spells[index].id,
+              name: ddragonChampion.spells[index].name,
+              description: ddragonChampion.spells[index].description,
+              tooltip: ddragonChampion.spells[index].tooltip,
+              cooldownBurn: cdragonSpell.cooldownTime ? cdragonSpell.cooldownTime.join("/") : ddragonChampion.spells[index].cooldownBurn,
+              costBurn: cdragonSpell.mana ? cdragonSpell.mana.join("/") : ddragonChampion.spells[index].costBurn,
+              image: ddragonChampion.spells[index].image,
+              mSpellCalculations: cdragonSpell.mSpellCalculations || {},
+              mDataValues: cdragonSpell.mDataValues || [],
+            };
+          }),
+          skins: ddragonChampion.skins,
+        };
+
+        console.log("Fetched champion data (Q):", championData.spells[0]);
+        setChampion(championData);
+        setSkins(championData.skins);
+
+        if (token) {
+          const buildsResponse = await getBuilds(token, championId);
+          setSavedBuilds(Array.isArray(buildsResponse.data) ? buildsResponse.data : []);
+        }
       } catch (err) {
         console.error("Erreur lors de la récupération des données:", err);
         setError(err.message);
+      } finally {
         setLoading(false);
       }
     };
 
-    const fetchBuildsData = async () => {
-      if (!token) return;
-      try {
-        const buildsResponse = await getBuilds(token, champion.id);
-        setSavedBuilds(Array.isArray(buildsResponse.data) ? buildsResponse.data : []);
-      } catch (err) {
-        console.error("Erreur lors de la récupération des builds:", err);
-        setSavedBuilds([]);
-      }
-    };
-
-    const loadData = async () => {
-      await fetchChampionData();
-      await fetchBuildsData();
-    };
-
     loadData();
-  }, [champion.id, token]);
+  }, [championId, token]);
 
   useEffect(() => {
-    if (!skins || skins.length === 0) return;
+    if (!skins.length) return;
 
     const timer = setInterval(() => {
       setCurrentSkinIndex((prevIndex) => {
         const nextIndex = (prevIndex + 1) % skins.length;
-        if (flatListRef.current) {
-          flatListRef.current.scrollToIndex({
-            index: nextIndex,
-            animated: true,
-          });
-        }
+        flatListRef.current?.scrollToIndex({ index: nextIndex, animated: true });
         return nextIndex;
       });
     }, 6000);
@@ -156,7 +242,7 @@ const ChampionDetailScreen = ({ route }) => {
   const refreshBuilds = async () => {
     if (!token) return;
     try {
-      const buildsResponse = await getBuilds(token, champion.id);
+      const buildsResponse = await getBuilds(token, championId);
       setSavedBuilds(Array.isArray(buildsResponse.data) ? buildsResponse.data : []);
     } catch (err) {
       console.error("Erreur lors du rafraîchissement des builds:", err);
@@ -165,10 +251,7 @@ const ChampionDetailScreen = ({ route }) => {
   };
 
   const handleEditBuild = async (buildId, newItems) => {
-    if (!token) {
-      Alert.alert("Erreur", "Vous devez être connecté pour modifier un build.");
-      return;
-    }
+    if (!token) return Alert.alert("Erreur", "Vous devez être connecté pour modifier un build.");
     try {
       const itemsString = JSON.stringify(newItems);
       await updateBuild(token, buildId, itemsString);
@@ -176,15 +259,12 @@ const ChampionDetailScreen = ({ route }) => {
       Alert.alert("Succès", "Build mis à jour avec succès.");
     } catch (err) {
       console.error("Erreur lors de la modification:", err);
-      Alert.alert("Erreur", "Impossible de modifier le build. Veuillez réessayer.");
+      Alert.alert("Erreur", "Impossible de modifier le build.");
     }
   };
 
   const handleDeleteBuild = async (buildId) => {
-    if (!token) {
-      Alert.alert("Erreur", "Vous devez être connecté pour supprimer un build.");
-      return;
-    }
+    if (!token) return Alert.alert("Erreur", "Vous devez être connecté pour supprimer un build.");
     try {
       await deleteBuild(token, buildId);
       await refreshBuilds();
@@ -198,8 +278,60 @@ const ChampionDetailScreen = ({ route }) => {
     setSelectedBuildId(selectedBuildId === buildId ? null : buildId);
   };
 
-  const formatChampionId = (id) => {
-    return id.charAt(0).toUpperCase() + id.slice(1).toLowerCase();
+  const formatChampionId = (id = "") => id.charAt(0).toUpperCase() + id.slice(1).toLowerCase();
+
+  const formatSpellDescription = (description = "", spellLevel = 0, cooldownBurn = "", costBurn = "", resType = resourceType, mSpellCalculations = {}, mDataValues = []) => {
+    console.log(`formatSpellDescription for ${description.slice(0, 20)}...:`, {
+      description,
+      spellLevel,
+      cooldownBurn,
+      costBurn,
+      resType,
+      mSpellCalculations: JSON.stringify(mSpellCalculations, null, 2),
+      mDataValues: JSON.stringify(mDataValues, null, 2),
+    });
+
+    let formattedDescription = description;
+    let baseDamageText = "<br><strong>Dégâts de base :</strong> ";
+    let hasBaseDamage = false;
+
+    const damageCalcKeys = ["TotalDamage", "SingleFireDamage", "RCalculatedDamage", "Damage"];
+    const damageCalc = damageCalcKeys.find((key) => mSpellCalculations[key]) ? mSpellCalculations[damageCalcKeys.find((key) => mSpellCalculations[key])] : null;
+
+    if (damageCalc && damageCalc.mFormulaParts) {
+      let baseDamage = 0;
+
+      damageCalc.mFormulaParts.forEach((part) => {
+        if (part.__type === "NamedDataValueCalculationPart" && part.mDataValue) {
+          const dataValueName = part.mDataValue;
+          const dataValue = mDataValues.find((dv) => dv.mName === dataValueName);
+          if (dataValue && dataValue.mValues) {
+            baseDamage += dataValue.mValues[spellLevel] || 0;
+            hasBaseDamage = true;
+          }
+        }
+      });
+
+      if (hasBaseDamage) {
+        baseDamageText += `${baseDamage.toFixed(1)}`;
+        formattedDescription += baseDamageText;
+      }
+    }
+
+    if (cooldownBurn) {
+      const cooldowns = cooldownBurn.split("/");
+      const cooldownAtLevel = cooldowns[spellLevel] || cooldowns[0];
+      formattedDescription += `<br><strong>Cooldown :</strong> ${cooldownAtLevel}s`;
+    }
+
+    if (costBurn && costBurn !== "0") {
+      const costs = costBurn.split("/");
+      const costAtLevel = costs[spellLevel] || costs[0];
+      formattedDescription += `<br><strong>Coût :</strong> ${costAtLevel} ${resType === "Énergie" ? "énergie" : resType === "Mana" ? "mana" : ""}`;
+    }
+
+    console.log("Final formatted description:", formattedDescription);
+    return formattedDescription;
   };
 
   const renderSkinSlider = () => (
@@ -214,58 +346,48 @@ const ChampionDetailScreen = ({ route }) => {
           showsHorizontalScrollIndicator={false}
           keyExtractor={(item) => item.id.toString()}
           renderItem={({ item }) => {
-            const formattedChampionId = formatChampionId(champion.id);
+            const formattedChampionId = formatChampionId(championId);
             const skinUrl = `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${formattedChampionId}_${item.num}.jpg`;
             return (
                 <View style={styles.skinContainer}>
-                  <Image
-                      source={{ uri: skinUrl }}
-                      style={styles.skinBackground}
-                      resizeMode="cover"
-                      onError={(e) => console.log(`Erreur chargement ${skinUrl}:`, e.nativeEvent.error)}
-                      onLoad={() => console.log(`Image chargée: ${skinUrl}`)}
-                  />
+                  <Image source={{ uri: skinUrl }} style={styles.skinBackground} resizeMode="cover" />
                 </View>
             );
           }}
           onScrollToIndexFailed={(info) => {
-            const wait = new Promise(resolve => setTimeout(resolve, 500));
-            wait.then(() => {
-              flatListRef.current?.scrollToIndex({
-                index: info.index,
-                animated: true,
-              });
-            });
+            setTimeout(() => flatListRef.current?.scrollToIndex({ index: info.index, animated: true }), 500);
           }}
           initialScrollIndex={currentSkinIndex}
-          getItemLayout={(data, index) => ({
-            length: screenWidth,
-            offset: screenWidth * index,
-            index,
-          })}
+          getItemLayout={(data, index) => ({ length: screenWidth, offset: screenWidth * index, index })}
           style={styles.sliderContainer}
       />
   );
 
   const renderStats = () => {
-    if (loading || !itemsData) {
-      return <Text style={styles.loadingText}>Chargement des données...</Text>;
-    }
+    if (loading || !itemsData || !champion) return <Text style={styles.loadingText}>Chargement des données...</Text>;
+    const resType = resourceType;
     return (
         <View style={styles.statsContainer}>
           <View style={styles.statsGrid}>
-            <View style={styles.statItem}><Text style={styles.statText}>HP: {hp}{buildBonuses.hp ? ` (${buildBonuses.hp} d'items)` : ''}</Text></View>
-            <View style={styles.statItem}><Text style={styles.statText}>MP: {mp}{buildBonuses.mp ? ` (${buildBonuses.mp} d'items)` : ''}</Text></View>
-            <View style={styles.statItem}><Text style={styles.statText}>Armor: {armor}{buildBonuses.armor ? ` (${buildBonuses.armor} d'items)` : ''}</Text></View>
-            <View style={styles.statItem}><Text style={styles.statText}>MR: {spellblock}{buildBonuses.spellblock ? ` (${buildBonuses.spellblock} d'items)` : ''}</Text></View>
-            <View style={styles.statItem}><Text style={styles.statText}>AD: {attackDamage}{buildBonuses.attackDamage ? ` (${buildBonuses.attackDamage} d'items)` : ''}</Text></View>
-            <View style={styles.statItem}><Text style={styles.statText}>AS: {attackSpeed.toFixed(2)}{buildBonuses.attackSpeed ? ` (${buildBonuses.attackSpeed.toFixed(2)} d'items)` : ''}</Text></View>
-            <View style={styles.statItem}><Text style={styles.statText}>Move Speed: {moveSpeed}</Text></View>
-            <View style={styles.statItem}><Text style={styles.statText}>Range: {attackRange}</Text></View>
-            <View style={styles.statItem}><Text style={styles.statText}>HP Regen: {hpRegen}{buildBonuses.hpRegen ? ` (${buildBonuses.hpRegen} d'items)` : ''}</Text></View>
-            <View style={styles.statItem}><Text style={styles.statText}>MP Regen: {mpRegen}{buildBonuses.mpRegen ? ` (${buildBonuses.mpRegen} d'items)` : ''}</Text></View>
-            <View style={styles.statItem}><Text style={styles.statText}>Crit: {crit}%{buildBonuses.crit ? ` (${buildBonuses.crit} d'items)` : ''}</Text></View>
-            <View style={styles.statItem}><Text style={styles.statText}>AP: {abilityPower}{buildBonuses.abilityPower ? ` (${buildBonuses.abilityPower} d'items)` : ''}</Text></View>
+            <View style={styles.statItem}><Text style={styles.statText}>HP: {stats.hp.toFixed(1)}{buildBonuses.hp || spellBonuses.hp ? ` (+${buildBonuses.hp || 0} items, +${spellBonuses.hp || 0} sorts)` : ''}</Text></View>
+            {resType === "Mana" && (
+                <View style={styles.statItem}><Text style={styles.statText}>Mana: {stats.mp.toFixed(1)}{buildBonuses.mp || spellBonuses.mp ? ` (+${buildBonuses.mp || 0} items, +${spellBonuses.mp || 0} sorts)` : ''}</Text></View>
+            )}
+            {resType === "Énergie" && (
+                <View style={styles.statItem}><Text style={styles.statText}>Énergie: {stats.energy.toFixed(1)}{buildBonuses.mp ? ` (+${buildBonuses.mp} items)` : ''}</Text></View>
+            )}
+            <View style={styles.statItem}><Text style={styles.statText}>Armor: {stats.armor.toFixed(1)}{buildBonuses.armor || spellBonuses.armor ? ` (+${buildBonuses.armor || 0} items, +${spellBonuses.armor || 0} sorts)` : ''}</Text></View>
+            <View style={styles.statItem}><Text style={styles.statText}>MR: {stats.spellblock.toFixed(1)}{buildBonuses.spellblock || spellBonuses.spellblock ? ` (+${buildBonuses.spellblock || 0} items, +${spellBonuses.spellblock || 0} sorts)` : ''}</Text></View>
+            <View style={styles.statItem}><Text style={styles.statText}>AD: {stats.attackDamage.toFixed(1)}{buildBonuses.attackDamage || spellBonuses.attackDamage ? ` (+${buildBonuses.attackDamage || 0} items, +${spellBonuses.attackDamage || 0} sorts)` : ''}</Text></View>
+            <View style={styles.statItem}><Text style={styles.statText}>AS: {stats.attackSpeed.toFixed(2)}{buildBonuses.attackSpeed || spellBonuses.attackSpeed ? ` (+${(buildBonuses.attackSpeed || 0).toFixed(2)} items, +${(spellBonuses.attackSpeed || 0).toFixed(2)} sorts)` : ''}</Text></View>
+            <View style={styles.statItem}><Text style={styles.statText}>Move Speed: {stats.moveSpeed}</Text></View>
+            <View style={styles.statItem}><Text style={styles.statText}>Range: {stats.attackRange}</Text></View>
+            <View style={styles.statItem}><Text style={styles.statText}>HP Regen: {stats.hpRegen.toFixed(1)}{buildBonuses.hpRegen || spellBonuses.hpRegen ? ` (+${buildBonuses.hpRegen || 0} items, +${spellBonuses.hpRegen || 0} sorts)` : ''}</Text></View>
+            {resType === "Mana" && (
+                <View style={styles.statItem}><Text style={styles.statText}>Mana Regen: {stats.mpRegen.toFixed(1)}{buildBonuses.mpRegen || spellBonuses.mpRegen ? ` (+${buildBonuses.mpRegen || 0} items, +${spellBonuses.mpRegen || 0} sorts)` : ''}</Text></View>
+            )}
+            <View style={styles.statItem}><Text style={styles.statText}>Crit: {stats.crit.toFixed(1)}%{buildBonuses.crit || spellBonuses.crit ? ` (+${buildBonuses.crit || 0} items, +${spellBonuses.crit || 0} sorts)` : ''}</Text></View>
+            <View style={styles.statItem}><Text style={styles.statText}>AP: {stats.abilityPower.toFixed(1)}{buildBonuses.abilityPower || spellBonuses.abilityPower ? ` (+${buildBonuses.abilityPower || 0} items, +${spellBonuses.abilityPower || 0} sorts)` : ''}</Text></View>
           </View>
         </View>
     );
@@ -275,16 +397,10 @@ const ChampionDetailScreen = ({ route }) => {
       <View style={styles.levelContainer}>
         <Text style={styles.levelText}>Niveau: {championLevel}</Text>
         <View style={styles.levelButtonsContainer}>
-          <Pressable
-              style={styles.levelButton}
-              onPress={() => setChampionLevel((prevLevel) => Math.max(1, prevLevel - 1))}
-          >
+          <Pressable style={styles.levelButton} onPress={() => setChampionLevel((prev) => Math.max(1, prev - 1))}>
             <Text style={styles.levelButtonText}>-</Text>
           </Pressable>
-          <Pressable
-              style={styles.levelButton}
-              onPress={() => setChampionLevel((prevLevel) => Math.min(18, prevLevel + 1))}
-          >
+          <Pressable style={styles.levelButton} onPress={() => setChampionLevel((prev) => Math.min(18, prev + 1))}>
             <Text style={styles.levelButtonText}>+</Text>
           </Pressable>
         </View>
@@ -292,30 +408,72 @@ const ChampionDetailScreen = ({ route }) => {
   );
 
   const renderPassive = () => (
-      champion.passive && (
+      champion?.passive && (
           <View style={styles.spellContainer}>
             <Text style={styles.spellName}>Passif - {champion.passive.name}</Text>
             <Image
                 source={{ uri: `https://ddragon.leagueoflegends.com/cdn/${currentVersion}/img/passive/${champion.passive.image.full}` }}
                 style={styles.spellIcon}
             />
-            <Text style={styles.spellDescription}>{champion.passive.description}</Text>
+            <HTML
+                source={{ html: champion.passive.description }}
+                contentWidth={screenWidth - 40}
+                baseStyle={styles.spellDescription}
+                tagsStyles={{ strong: { color: "#ffcc00", fontWeight: "bold" } }}
+            />
           </View>
       )
   );
 
   const renderSpells = () => (
-      Array.isArray(champion.spells) ? (
-          champion.spells.map((spell, index) => (
-              <View key={index} style={styles.spellContainer}>
-                <Text style={styles.spellName}>{["Q", "W", "E", "R"][index]} - {spell.name}</Text>
-                <Image
-                    source={{ uri: `https://ddragon.leagueoflegends.com/cdn/${currentVersion}/img/spell/${spell.image.full}` }}
-                    style={styles.spellIcon}
-                />
-                <Text style={styles.spellDescription}>{spell.description}</Text>
-              </View>
-          ))
+      Array.isArray(champion?.spells) ? (
+          champion.spells.map((spell, index) => {
+            const spellKey = ["Q", "W", "E", "R"][index];
+            const maxLevel = spellKey === "R" ? 3 : 5;
+            const currentLevel = spellLevels[spellKey];
+            const formattedDescription = formatSpellDescription(
+                spell.description,
+                currentLevel,
+                spell.cooldownBurn,
+                spell.costBurn,
+                resourceType,
+                spell.mSpellCalculations,
+                spell.mDataValues
+            );
+
+            return (
+                <View key={index} style={styles.spellContainer}>
+                  <View style={styles.spellHeader}>
+                    <Text style={styles.spellName}>{spellKey} - {spell.name}</Text>
+                    <View style={styles.spellLevelControls}>
+                      <Pressable
+                          style={styles.spellLevelButton}
+                          onPress={() => setSpellLevels((prev) => ({ ...prev, [spellKey]: Math.max(0, prev[spellKey] - 1) }))}
+                      >
+                        <Text style={styles.spellLevelButtonText}>-</Text>
+                      </Pressable>
+                      <Text style={styles.spellLevelText}>{currentLevel + 1}/{maxLevel}</Text>
+                      <Pressable
+                          style={styles.spellLevelButton}
+                          onPress={() => setSpellLevels((prev) => ({ ...prev, [spellKey]: Math.min(maxLevel - 1, prev[spellKey] + 1) }))}
+                      >
+                        <Text style={styles.spellLevelButtonText}>+</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                  <Image
+                      source={{ uri: `https://ddragon.leagueoflegends.com/cdn/${currentVersion}/img/spell/${spell.image.full}` }}
+                      style={styles.spellIcon}
+                  />
+                  <HTML
+                      source={{ html: formattedDescription }}
+                      contentWidth={screenWidth - 40}
+                      baseStyle={styles.spellDescription}
+                      tagsStyles={{ strong: { color: "#ffcc00", fontWeight: "bold" } }}
+                  />
+                </View>
+            );
+          })
       ) : (
           <Text style={styles.errorText}>Aucun sort disponible</Text>
       )
@@ -329,14 +487,8 @@ const ChampionDetailScreen = ({ route }) => {
                 <View key={build.id} style={styles.buildContainer}>
                   <View style={styles.buildHeader}>
                     <Text style={styles.buildTitle}>Build #{index + 1}</Text>
-                    <Pressable
-                        style={styles.checkboxContainer}
-                        onPress={() => toggleBuildSelection(build.id)}
-                    >
-                      <View style={[
-                        styles.checkbox,
-                        selectedBuildId === build.id && styles.checkboxChecked,
-                      ]}>
+                    <Pressable style={styles.checkboxContainer} onPress={() => toggleBuildSelection(build.id)}>
+                      <View style={[styles.checkbox, selectedBuildId === build.id && styles.checkboxChecked]}>
                         {selectedBuildId === build.id && <View style={styles.checkboxInner} />}
                       </View>
                       {selectedBuildId === build.id && <Text style={styles.selectedText}>(Sélectionné)</Text>}
@@ -357,13 +509,10 @@ const ChampionDetailScreen = ({ route }) => {
                   </View>
                   <View style={styles.buildButtonsContainer}>
                     <Pressable
-                        style={({ pressed }) => [
-                          styles.editButton,
-                          { backgroundColor: pressed ? "#e6b800" : "#ffcc00" },
-                        ]}
+                        style={({ pressed }) => [styles.editButton, { backgroundColor: pressed ? "#e6b800" : "#ffcc00" }]}
                         onPress={() =>
                             navigation.navigate("ItemSelectionScreen", {
-                              championId: champion.id,
+                              championId: championId,
                               buildId: build.id,
                               initialItems: JSON.parse(build.items),
                               onSaveBuild: (newItems) => handleEditBuild(build.id, newItems),
@@ -373,10 +522,7 @@ const ChampionDetailScreen = ({ route }) => {
                       <Text style={styles.editButtonText}>Modifier</Text>
                     </Pressable>
                     <Pressable
-                        style={({ pressed }) => [
-                          styles.deleteButton,
-                          { backgroundColor: pressed ? "#cc0000" : "#ff4444" },
-                        ]}
+                        style={({ pressed }) => [styles.deleteButton, { backgroundColor: pressed ? "#cc0000" : "#ff4444" }]}
                         onPress={() => handleDeleteBuild(build.id)}
                     >
                       <Text style={styles.deleteButtonText}>Supprimer</Text>
@@ -388,16 +534,8 @@ const ChampionDetailScreen = ({ route }) => {
             <Text style={styles.errorText}>Aucun build disponible</Text>
         )}
         <Pressable
-            style={({ pressed }) => [
-              styles.addButton,
-              { backgroundColor: pressed ? "#e6b800" : "#ffcc00" },
-            ]}
-            onPress={() =>
-                navigation.navigate("ItemSelectionScreen", {
-                  championId: champion.id,
-                  onSaveBuild: () => refreshBuilds(),
-                })
-            }
+            style={({ pressed }) => [styles.addButton, { backgroundColor: pressed ? "#e6b800" : "#ffcc00" }]}
+            onPress={() => navigation.navigate("ItemSelectionScreen", { championId: championId, onSaveBuild: refreshBuilds })}
         >
           <Text style={styles.addButtonText}>+</Text>
         </Pressable>
@@ -408,7 +546,7 @@ const ChampionDetailScreen = ({ route }) => {
       <View style={styles.fullContainer}>
         {renderSkinSlider()}
         <ScrollView style={styles.contentContainer} contentContainerStyle={styles.contentPadding}>
-          {loading || !itemsData ? (
+          {loading || !champion ? (
               <Text style={styles.loadingText}>Chargement des données...</Text>
           ) : (
               <>
@@ -551,6 +689,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#ffcc00",
   },
+  spellHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   spellName: {
     fontSize: 18,
     fontWeight: "bold",
@@ -568,6 +711,29 @@ const styles = StyleSheet.create({
   },
   spellDescription: {
     fontSize: 16,
+    color: "#fff",
+    backgroundColor: "transparent",
+  },
+  spellLevelControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  spellLevelButton: {
+    width: 25,
+    height: 25,
+    borderRadius: 12.5,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#ffcc00",
+  },
+  spellLevelButtonText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#1e1e1e",
+  },
+  spellLevelText: {
+    fontSize: 14,
     color: "#fff",
     backgroundColor: "transparent",
   },
